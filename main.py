@@ -1113,8 +1113,8 @@ class MCOMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION} — {APP_SUBTITLE}")
-        self.geometry("860x720")
-        self.minsize(780, 640)
+        self.geometry("640x630")
+        self.minsize(580, 540)
         self.configure(bg=BG_DARK)
         set_dark_title_bar(self)
 
