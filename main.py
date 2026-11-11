@@ -73,6 +73,8 @@ ACCENT_ORANGE = "#d18616"
 ACCENT_RED = "#d73a49"
 BTN_SEC_BG = "#3a3d41"
 BTN_SEC_HOVER = "#45494e"
+BTN_DISABLED_BG = "#2d2d2d"
+BTN_DISABLED_FG = "#666666"
 UI_FONT = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
 MONO_FONT = "Consolas" if sys.platform == "win32" else "DejaVu Sans Mono"
 
@@ -1189,44 +1191,44 @@ class MCOMakerApp(tk.Tk):
     def _build_ui(self):
         # Header Bar
         header = tk.Frame(self, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        header.pack(fill="x", padx=16, pady=(12, 10))
+        header.pack(side="top", fill="x", padx=16, pady=(10, 8))
 
         title_col = tk.Frame(header, bg=CARD_BG)
-        title_col.pack(side="left", padx=16, pady=10)
+        title_col.pack(side="left", padx=14, pady=8)
 
         tk.Label(
             title_col, text="⚡ MCO Maker",
-            font=(UI_FONT, 15, "bold"), fg=TEXT_WHITE, bg=CARD_BG
+            font=(UI_FONT, 14, "bold"), fg=TEXT_WHITE, bg=CARD_BG
         ).pack(anchor="w")
 
         tk.Label(
             title_col, text="Automated PITC Bill Scraper & Sub Division / RO Office MCO Generator",
-            font=(UI_FONT, 9), fg=TEXT_MUTED, bg=CARD_BG
+            font=(UI_FONT, 8), fg=TEXT_MUTED, bg=CARD_BG
         ).pack(anchor="w")
 
         # Right buttons in header
         btn_box = tk.Frame(header, bg=CARD_BG)
-        btn_box.pack(side="right", padx=16)
+        btn_box.pack(side="right", padx=14)
 
         tk.Button(
             btn_box, text="ⓘ About", font=(UI_FONT, 9), fg=TEXT_MAIN, bg=BTN_SEC_BG,
             activebackground=BTN_SEC_HOVER, activeforeground=TEXT_WHITE, relief="flat",
-            padx=12, pady=4, cursor="hand2", command=self._show_about
+            padx=12, pady=3, cursor="hand2", command=self._show_about
         ).pack(side="right")
 
         # ====================================================================
         # CARD 1: EXCEL INPUT FILE
         # ====================================================================
         card_input = tk.Frame(self, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        card_input.pack(fill="x", padx=16, pady=(0, 10))
+        card_input.pack(side="top", fill="x", padx=16, pady=(0, 8))
 
         tk.Label(
             card_input, text="1. Select Input Excel File (Reference Numbers must be in Column A)",
-            font=(UI_FONT, 10, "bold"), fg=TEXT_WHITE, bg=CARD_BG
-        ).pack(anchor="w", padx=16, pady=(12, 6))
+            font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=CARD_BG
+        ).pack(anchor="w", padx=14, pady=(8, 4))
 
         file_row = tk.Frame(card_input, bg=CARD_BG)
-        file_row.pack(fill="x", padx=16, pady=(0, 6))
+        file_row.pack(fill="x", padx=14, pady=(0, 4))
 
         self.file_path_var = tk.StringVar()
         self.file_entry = tk.Entry(
@@ -1234,12 +1236,12 @@ class MCOMakerApp(tk.Tk):
             bg=INPUT_BG, fg=TEXT_WHITE, insertbackground=TEXT_WHITE,
             relief="flat", highlightthickness=1, highlightbackground=BORDER_COLOR
         )
-        self.file_entry.pack(side="left", fill="x", expand=True, ipady=4)
+        self.file_entry.pack(side="left", fill="x", expand=True, ipady=3)
 
         tk.Button(
             file_row, text="📂 Browse...", font=(UI_FONT, 9, "bold"),
             fg=TEXT_WHITE, bg=BTN_SEC_BG, activebackground=BTN_SEC_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", padx=14, pady=3,
+            activeforeground=TEXT_WHITE, relief="flat", padx=12, pady=2,
             cursor="hand2", command=self._browse_file
         ).pack(side="left", padx=(8, 0))
 
@@ -1249,21 +1251,60 @@ class MCOMakerApp(tk.Tk):
             card_input, textvariable=self.info_summary_var,
             font=(UI_FONT, 8), fg=TEXT_MUTED, bg=CARD_BG
         )
-        self.info_lbl.pack(anchor="w", padx=16, pady=(0, 12))
+        self.info_lbl.pack(anchor="w", padx=14, pady=(0, 8))
 
         # ====================================================================
-        # CARD 2: SCRAPER CONTROLS & LOG SCREEN
+        # CARD 3: MAKE MCO SECTION (Packed at bottom so it is NEVER clipped)
+        # ====================================================================
+        self.card_mco = tk.Frame(self, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
+        self.card_mco.pack(side="bottom", fill="x", padx=16, pady=(0, 10))
+
+        mco_header_row = tk.Frame(self.card_mco, bg=CARD_BG)
+        mco_header_row.pack(fill="x", padx=14, pady=(8, 4))
+
+        tk.Label(
+            mco_header_row, text="2. Make MCO (Generate Documents)",
+            font=(UI_FONT, 10, "bold"), fg=TEXT_WHITE, bg=CARD_BG
+        ).pack(side="left")
+
+        self.mco_status_hint = tk.Label(
+            mco_header_row, text="— (Buttons activate after information is fetched)",
+            font=(UI_FONT, 8, "italic"), fg=TEXT_MUTED, bg=CARD_BG
+        )
+        self.mco_status_hint.pack(side="left", padx=8)
+
+        mco_btn_row = tk.Frame(self.card_mco, bg=CARD_BG)
+        mco_btn_row.pack(fill="x", padx=14, pady=(0, 10))
+
+        self.btn_sub_div = tk.Button(
+            mco_btn_row, text="🏢  For Sub Division", font=(UI_FONT, 10, "bold"),
+            fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground=ACCENT_BLUE_HOVER,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=18, pady=7,
+            command=lambda: self._prompt_make_mco("sub_division"), state="disabled"
+        )
+        self.btn_sub_div.pack(side="left", padx=(0, 10))
+
+        self.btn_ro_office = tk.Button(
+            mco_btn_row, text="🏛  For RO Office", font=(UI_FONT, 10, "bold"),
+            fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground="#7a4cc7",
+            activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=18, pady=7,
+            command=lambda: self._prompt_make_mco("ro_office"), state="disabled"
+        )
+        self.btn_ro_office.pack(side="left")
+
+        # ====================================================================
+        # CARD 2: SCRAPER CONTROLS & LOG SCREEN (Expands in the middle)
         # ====================================================================
         card_scrape = tk.Frame(self, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        card_scrape.pack(fill="both", expand=True, padx=16, pady=(0, 10))
+        card_scrape.pack(side="top", fill="both", expand=True, padx=16, pady=(0, 8))
 
         top_act = tk.Frame(card_scrape, bg=CARD_BG)
-        top_act.pack(fill="x", padx=16, pady=(12, 8))
+        top_act.pack(fill="x", padx=14, pady=(8, 6))
 
         self.btn_start = tk.Button(
-            top_act, text="▶ Start Scraping", font=(UI_FONT, 10, "bold"),
+            top_act, text="▶ Start Scraping", font=(UI_FONT, 9, "bold"),
             fg=TEXT_WHITE, bg=ACCENT_GREEN, activebackground=ACCENT_GREEN_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=16, pady=6,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=14, pady=5,
             command=self._start_scraping
         )
         self.btn_start.pack(side="left")
@@ -1271,7 +1312,7 @@ class MCOMakerApp(tk.Tk):
         self.btn_pause = tk.Button(
             top_act, text="⏸ Pause", font=(UI_FONT, 9),
             fg=TEXT_MAIN, bg=BTN_SEC_BG, activebackground=BTN_SEC_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=12, pady=6,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=12, pady=5,
             command=self._toggle_pause, state="disabled"
         )
         self.btn_pause.pack(side="left", padx=8)
@@ -1279,32 +1320,32 @@ class MCOMakerApp(tk.Tk):
         self.btn_stop = tk.Button(
             top_act, text="⏹ Stop", font=(UI_FONT, 9),
             fg=TEXT_MAIN, bg=BTN_SEC_BG, activebackground=BTN_SEC_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=12, pady=6,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=12, pady=5,
             command=self._stop_scraping, state="disabled"
         )
         self.btn_stop.pack(side="left")
 
         # Progress bar
         self.progress_bar = ttk.Progressbar(card_scrape, orient="horizontal", mode="determinate")
-        self.progress_bar.pack(fill="x", padx=16, pady=(0, 8))
+        self.progress_bar.pack(fill="x", padx=14, pady=(0, 6))
 
-        # Colored Status Box Above Log Screen (Hidden initially, shows "Information Fetched")
+        # Colored Status Box Above Log Screen (Shows "Information Fetched" once finished)
         self.status_box = tk.Frame(card_scrape, bg=CARD_BG)
-        self.status_box.pack(fill="x", padx=16, pady=(0, 6))
+        self.status_box.pack(fill="x", padx=14, pady=(0, 4))
 
         self.status_badge = tk.Label(
             self.status_box, text="",
-            font=(UI_FONT, 10, "bold"), fg=TEXT_WHITE, bg=CARD_BG, pady=4
+            font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=CARD_BG, pady=3
         )
         self.status_badge.pack(fill="x")
 
         # Clean Log Window
         log_frame = tk.Frame(card_scrape, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        log_frame.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        log_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
 
         self.log_text = tk.Text(
-            log_frame, bg=INPUT_BG, fg=TEXT_MAIN, font=(MONO_FONT, 9),
-            relief="flat", wrap="word", padx=10, pady=8, state="disabled"
+            log_frame, height=6, bg=INPUT_BG, fg=TEXT_MAIN, font=(MONO_FONT, 9),
+            relief="flat", wrap="word", padx=8, pady=6, state="disabled"
         )
         self.log_text.tag_configure("ok", foreground="#4ec9b0")
         self.log_text.tag_configure("err", foreground="#f44747")
@@ -1313,36 +1354,6 @@ class MCOMakerApp(tk.Tk):
         scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
         scrollbar.pack(side="right", fill="y")
         self.log_text.configure(yscrollcommand=scrollbar.set)
-
-        # ====================================================================
-        # CARD 3: MAKE MCO SECTION
-        # ====================================================================
-        self.card_mco = tk.Frame(self, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        self.card_mco.pack(fill="x", padx=16, pady=(0, 14))
-
-        tk.Label(
-            self.card_mco, text="2. Make MCO (Generate Documents)",
-            font=(UI_FONT, 10, "bold"), fg=TEXT_WHITE, bg=CARD_BG
-        ).pack(anchor="w", padx=16, pady=(10, 6))
-
-        mco_btn_row = tk.Frame(self.card_mco, bg=CARD_BG)
-        mco_btn_row.pack(fill="x", padx=16, pady=(0, 12))
-
-        self.btn_sub_div = tk.Button(
-            mco_btn_row, text="🏢 For Sub Division", font=(UI_FONT, 10, "bold"),
-            fg=TEXT_WHITE, bg=ACCENT_BLUE, activebackground=ACCENT_BLUE_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=18, pady=8,
-            command=lambda: self._prompt_make_mco("sub_division"), state="disabled"
-        )
-        self.btn_sub_div.pack(side="left", padx=(0, 10))
-
-        self.btn_ro_office = tk.Button(
-            mco_btn_row, text="🏛 For RO Office", font=(UI_FONT, 10, "bold"),
-            fg=TEXT_WHITE, bg="#6f42c1", activebackground="#7a4cc7",
-            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=18, pady=8,
-            command=lambda: self._prompt_make_mco("ro_office"), state="disabled"
-        )
-        self.btn_ro_office.pack(side="left")
 
         # Load existing cached records if available
         self._check_existing_cache()
@@ -1397,9 +1408,12 @@ class MCOMakerApp(tk.Tk):
         if self.temp_cache_file.exists():
             try:
                 data = json.loads(self.temp_cache_file.read_text(encoding="utf-8"))
-                if data and isinstance(data, list):
+                if data and isinstance(data, list) and len(data) > 0:
                     self.records = data
                     self._enable_mco_buttons(f"Information Fetched (Cached {len(data)} Bills)")
+                    self.info_summary_var.set(f"✔ Restored {len(data)} bills from local cache. Ready to generate MCOs.")
+                    self.info_lbl.configure(fg="#4ec9b0")
+                    self._log(f'Local cache restored: {len(data)} bills ready for MCO generation.', tag="ok")
             except Exception:
                 pass
 
@@ -1407,8 +1421,16 @@ class MCOMakerApp(tk.Tk):
         # Display colored box above log
         self.status_box.configure(bg=ACCENT_GREEN)
         self.status_badge.configure(text=f"✔  {badge_text}", bg=ACCENT_GREEN)
-        self.btn_sub_div.configure(state="normal")
-        self.btn_ro_office.configure(state="normal")
+        self.mco_status_hint.configure(text="✔ Ready to generate Word or PDF", fg="#89d185")
+        self.btn_sub_div.configure(state="normal", bg=ACCENT_BLUE, fg=TEXT_WHITE, cursor="hand2")
+        self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
+
+    def _disable_mco_buttons(self):
+        self.status_box.configure(bg=CARD_BG)
+        self.status_badge.configure(text="", bg=CARD_BG)
+        self.mco_status_hint.configure(text="— (Buttons activate after information is fetched)", fg=TEXT_MUTED)
+        self.btn_sub_div.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
+        self.btn_ro_office.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
 
     def _toggle_pause(self):
         if not self.is_scraping:
@@ -1445,10 +1467,7 @@ class MCOMakerApp(tk.Tk):
             return
 
         self._clear_log()
-        self.status_box.configure(bg=CARD_BG)
-        self.status_badge.configure(text="", bg=CARD_BG)
-        self.btn_sub_div.configure(state="disabled")
-        self.btn_ro_office.configure(state="disabled")
+        self._disable_mco_buttons()
 
         self.is_scraping = True
         self.is_paused = False
