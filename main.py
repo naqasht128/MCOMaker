@@ -1028,7 +1028,7 @@ class LicenseGateDialog(tk.Toplevel):
         p_row.pack(fill="x", padx=12, pady=(0, 6))
 
         tk.Label(
-            p_row, text="• 6 Months: Rs. 2,500 (180 Days, Up to 2 PCs)\n• 1 Year: Rs. 5,000 (365 Days, Up to 2 PCs) [Recommended]",
+            p_row, text="• 6 Months: Rs. 2,500 (180 Days, 1 PC)\n• 1 Year: Rs. 5,000 (365 Days, 1 PC) [Recommended]",
             font=(UI_FONT, 8), fg="#4ec9b0", bg=INPUT_BG, justify="left"
         ).pack(side="left")
 

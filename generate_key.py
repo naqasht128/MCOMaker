@@ -65,12 +65,12 @@ UI_FONT = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
 MONO_FONT = "Consolas" if sys.platform == "win32" else "DejaVu Sans Mono"
 
 PLANS = [
-    ("6_months", "6 Months  —  Rs. 2,500  (180 Days, Up to 2 Devices)", 180, 2),
-    ("1_year", "1 Year  —  Rs. 5,000  (365 Days, Up to 2 Devices)  [Recommended]", 365, 2),
+    ("6_months", "6 Months  —  Rs. 2,500  (180 Days, 1 Device)", 180, 1),
+    ("1_year", "1 Year  —  Rs. 5,000  (365 Days, 1 Device)  [Recommended]", 365, 1),
 ]
 
 
-def request_generate_key(api_url: str, admin_secret: str, plan_type: str, max_devices: int = 2) -> dict:
+def request_generate_key(api_url: str, admin_secret: str, plan_type: str, max_devices: int = 1) -> dict:
     url = f"{api_url.rstrip('/')}/api/admin/generate"
     headers = {
         "Content-Type": "application/json",
@@ -113,7 +113,7 @@ class AdminKeyGenApp(tk.Tk):
         self.api_url_var = tk.StringVar(value=self.cfg.get("api_url", DEFAULT_API_URL))
         self.secret_var = tk.StringVar(value=self.cfg.get("admin_secret", DEFAULT_ADMIN_SECRET))
         self.plan_var = tk.StringVar(value="1_year")
-        self.devices_var = tk.IntVar(value=2)
+        self.devices_var = tk.IntVar(value=1)
         self.generated_key_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="Ready to generate license keys.")
 
@@ -276,7 +276,7 @@ class AdminKeyGenApp(tk.Tk):
 def main():
     parser = argparse.ArgumentParser(description="MCO Maker Admin Key Generator")
     parser.add_argument("--plan", choices=["6_months", "1_year"], help="Subscription plan type")
-    parser.add_argument("--devices", type=int, default=2, help="Max devices allowed")
+    parser.add_argument("--devices", type=int, default=1, help="Max devices allowed")
     parser.add_argument("--url", default=DEFAULT_API_URL, help="License API URL")
     parser.add_argument("--secret", default=DEFAULT_ADMIN_SECRET, help="Admin secret password")
     args = parser.parse_args()

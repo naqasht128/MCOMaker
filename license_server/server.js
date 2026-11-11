@@ -34,8 +34,8 @@ if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const PLAN_CONFIG = {
-  '6_months': { duration_days: 180, max_devices: 2, label: '6 Months', price: 2500 },
-  '1_year': { duration_days: 365, max_devices: 2, label: '1 Year', price: 5000 }
+  '6_months': { duration_days: 180, max_devices: 1, label: '6 Months', price: 2500 },
+  '1_year': { duration_days: 365, max_devices: 1, label: '1 Year', price: 5000 }
 };
 
 function generateSerialKey() {
