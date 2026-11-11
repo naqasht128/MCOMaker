@@ -454,6 +454,7 @@ class MCODocumentGenerator:
         # For multiple records: Create new combined document with identical structure
         # Fill first record into base_doc, then clone for subsequent records
         cls._populate_sub_division_doc(base_doc, records[0])
+        sectPr = base_doc.element.body.find(docx.oxml.ns.qn('w:sectPr'))
         for rec in records[1:]:
             base_doc.add_page_break()
             # Append filled template content
@@ -462,98 +463,119 @@ class MCODocumentGenerator:
             for el in temp_doc.element.body:
                 if el.tag.endswith('sectPr'):
                     continue
-                base_doc.element.body.append(el)
+                if sectPr is not None:
+                    sectPr.addprevious(el)
+                else:
+                    base_doc.element.body.append(el)
 
         base_doc.save(out_path)
 
     @classmethod
     def _populate_sub_division_doc(cls, doc: docx.Document, rec: dict):
         formatted_ac = cls.format_account_no(rec.get("reference", ""))
-        sub_div_name = rec.get("sub_division", "").strip().upper()
-        if not sub_div_name:
-            sub_div_name = "MANDHRA"
+        sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
 
-        def _format_cell(cell, text: str, bold: bool = True, center: bool = True, font_size_pt: float = 9):
-            p = cell.paragraphs[0]
-            for r in list(p.runs):
-                r._r.getparent().remove(r._r)
-            if center:
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(str(text))
-            run.bold = bold
-            if font_size_pt:
-                run.font.size = Pt(font_size_pt)
-            p.paragraph_format.space_before = Pt(0)
-            p.paragraph_format.space_after = Pt(0)
-        
+        # 1. Update Paragraphs preserving exact fonts, underlines, and tab stops
         for p in doc.paragraphs:
             txt = p.text
-            if "Book No" in txt:
-                p.text = f"Book No: {rec.get('sco_no', '')}"
-            elif "Consumer's Name" in txt:
-                p.text = f"Consumer's Name: \t{rec.get('name', '')}_____________________________________________________"
-            elif "Address" in txt and "Consumer" not in txt:
-                p.text = f"Address: \t{rec.get('address', '')}_____________________________________________"
-            elif "Feeder No" in txt:
-                p.text = f"Feeder No: __________{rec.get('feeder', '')}___________________________________________________________"
-            elif "Reason For Change" in txt:
-                sim_parts = []
-                if rec.get("sim_no"): sim_parts.append(f"Sim No: {rec.get('sim_no')}")
-                if rec.get("sim_id"): sim_parts.append(f"Sim ID: {rec.get('sim_id')}")
-                if rec.get("telco"): sim_parts.append(f"Telco: {rec.get('telco')}")
-                sim_str = "   ".join(sim_parts)
-                if sim_str:
-                    p.text = f"Reason For Change: ____________Replacement________________________________________________ \t\t{sim_str}"
+            if "Book No:" in txt:
+                if len(p.runs) > 1:
+                    p.runs[1].text = f" {rec.get('sco_no', '')}"
                 else:
-                    p.text = "Reason For Change: ____________Replacement________________________________________________"
-            elif "Sub-Divisional Officer" in txt:
-                p.text = f"Sub-Divisional Officer: SDO PESCO {sub_div_name} SUB DIVISION    Date: {rec.get('date', '')}"
+                    p.text = f"Book No: {rec.get('sco_no', '')}"
+            elif "Office:" in txt:
+                if len(p.runs) > 3:
+                    p.runs[3].text = f"SDO (E) PESCO {sub_div_name}"
+                else:
+                    p.text = f"Office: ______________________________SDO (E) PESCO {sub_div_name}____ ______________________________"
+            elif txt.strip().startswith("Date:"):
+                if len(p.runs) > 3:
+                    p.runs[3].text = str(rec.get("date", ""))
+                else:
+                    p.text = f"Date: __{rec.get('date', '')}__"
+            elif "Consumer's Name:" in txt:
+                if len(p.runs) > 2:
+                    p.runs[2].text = str(rec.get("name", ""))
+                    for ri in range(3, min(5, len(p.runs))):
+                        p.runs[ri].text = ""
+                else:
+                    p.text = f"Consumer's Name: ______{rec.get('name', '')}_______________________________________________________"
+            elif "Address:" in txt and "Consumer" not in txt:
+                if len(p.runs) > 3:
+                    p.runs[3].text = str(rec.get("address", ""))
+                    for ri in range(4, min(7, len(p.runs))):
+                        p.runs[ri].text = ""
+                else:
+                    p.text = f"Address: \t_________{rec.get('address', '')}________________________________________"
+            elif "Feeder No:" in txt:
+                if len(p.runs) > 2:
+                    p.runs[2].text = str(rec.get("feeder", ""))
+                else:
+                    p.text = f"Feeder No: _____________{rec.get('feeder', '')}___________________________________________________________"
+            elif "Reason" in txt and "Change:" in txt:
+                if len(p.runs) > 16:
+                    p.runs[3].text = "Replacement"
+                    p.runs[10].text = str(rec.get("sim_no", ""))
+                    p.runs[12].text = str(rec.get("sim_id", ""))
+                    p.runs[16].text = str(rec.get("telco", ""))
+                else:
+                    p.text = f"Reason For Change: ____________Replacement____________________________________________________\t\t\tSim No: {rec.get('sim_no', '')}   Sim ID: {rec.get('sim_id', '')}   Telco: {rec.get('telco', '')}"
 
-        if len(doc.tables) >= 1:
-            t0 = doc.tables[0]
-            _format_cell(t0.rows[0].cells[0], f"Office: SDO (E) PESCO {sub_div_name}", bold=False, center=False)
-            _format_cell(t0.rows[0].cells[1], "METER CHANGE ORDER", bold=True, center=True)
-            _format_cell(t0.rows[0].cells[2], f"Date: {rec.get('date', '')}", bold=False, center=False)
+        # 2. Update Tables (works with both 3-table user template and legacy 4-table template)
+        tbl_offset = 0
+        if len(doc.tables) >= 4:
+            # 4-table template
+            tbl_offset = 1
+            t_hdr = doc.tables[0]
+            if len(t_hdr.rows[0].cells) >= 3:
+                t_hdr.rows[0].cells[0].paragraphs[0].text = f"Office: SDO (E) PESCO {sub_div_name}"
+                t_hdr.rows[0].cells[2].paragraphs[0].text = f"Date: {rec.get('date', '')}"
 
-        if len(doc.tables) >= 2:
-            t1 = doc.tables[1]
-            _format_cell(t1.rows[0].cells[1], f"\t\tAccount No: \t{formatted_ac}", bold=False, center=False)
+        # Table for To / Account No
+        if len(doc.tables) > tbl_offset:
+            t_ac = doc.tables[tbl_offset]
+            if len(t_ac.rows[0].cells) >= 2:
+                p_ac = t_ac.rows[0].cells[1].paragraphs[0]
+                if len(p_ac.runs) > 2:
+                    p_ac.runs[2].text = formatted_ac
+                else:
+                    p_ac.text = f"Account No: \t{formatted_ac}"
 
-        if len(doc.tables) >= 3:
-            t2 = doc.tables[2]
-            # Headers MF
-            _format_cell(t2.rows[1].cells[6], "MF", bold=True, center=True)
-            _format_cell(t2.rows[4].cells[6], "MF", bold=True, center=True)
+        # Table for Installed & Removed Meters
+        m_tbl_idx = tbl_offset + 1
+        if len(doc.tables) > m_tbl_idx:
+            t_meter = doc.tables[m_tbl_idx]
+            # Row 2 (Installed Meter)
+            if len(t_meter.rows) > 2:
+                r2 = t_meter.rows[2].cells
+                if r2[0].paragraphs[0].runs:
+                    r2[0].paragraphs[0].runs[0].text = str(rec.get("msn", ""))
+                else:
+                    r2[0].text = str(rec.get("msn", ""))
+                for ci in [1, 2, 3, 4]:
+                    r2[ci].text = ""
+                for ci, val in [(5, "S/P"), (6, "1"), (7, "00000"), (8, "5")]:
+                    if r2[ci].paragraphs[0].runs:
+                        r2[ci].paragraphs[0].runs[0].text = val
+                    else:
+                        r2[ci].text = val
 
-            # Row 2: Installed Meter
-            # | Meter No | Make | Const | Amps | Volts | Phase | MF | Read-ing | Range (No of Digits) |
-            # | 3797426593 | | | | | S/P | 1 | 00000 | 5 |
-            inst = t2.rows[2].cells
-            _format_cell(inst[0], str(rec.get("msn", "")), bold=True, center=True)
-            _format_cell(inst[1], "", bold=False, center=True)            # Make blank
-            _format_cell(inst[2], "", bold=False, center=True)            # Const blank
-            _format_cell(inst[3], "", bold=False, center=True)            # Amps blank
-            _format_cell(inst[4], "", bold=False, center=True)            # Volts blank
-            _format_cell(inst[5], "S/P", bold=True, center=True)
-            _format_cell(inst[6], "1", bold=True, center=True)
-            _format_cell(inst[7], "00000", bold=True, center=True)
-            _format_cell(inst[8], "5", bold=True, center=True)
-
-            # Row 5: Removed Meter
-            # | Meter No | Make | Const | Amps | Volts | Phase | MF | Read-ing | Range (No of Digits) |
-            # | 638425 | | | | | S/P | 1 | 2127 | 5 |
-            rem = t2.rows[5].cells
-            old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
-            reading = str(rec.get("present_reading", ""))
-            _format_cell(rem[0], old_meter, bold=True, center=True)
-            _format_cell(rem[1], "", bold=False, center=True)            # Make blank
-            _format_cell(rem[2], "", bold=False, center=True)            # Const blank
-            _format_cell(rem[3], "", bold=False, center=True)            # Amps blank
-            _format_cell(rem[4], "", bold=False, center=True)            # Volts blank
-            _format_cell(rem[5], "S/P", bold=True, center=True)
-            _format_cell(rem[6], "1", bold=True, center=True)
-            _format_cell(rem[7], reading, bold=True, center=True)
-            _format_cell(rem[8], "5", bold=True, center=True)
+            # Row 5 (Removed Meter)
+            if len(t_meter.rows) > 5:
+                r5 = t_meter.rows[5].cells
+                old_m = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
+                read = str(rec.get("present_reading", ""))
+                if r5[0].paragraphs[0].runs:
+                    r5[0].paragraphs[0].runs[0].text = old_m
+                else:
+                    r5[0].text = old_m
+                for ci in [1, 2, 3, 4]:
+                    r5[ci].text = ""
+                for ci, val in [(5, "S/P"), (6, "1"), (7, read), (8, "5")]:
+                    if r5[ci].paragraphs[0].runs:
+                        r5[ci].paragraphs[0].runs[0].text = val
+                    else:
+                        r5[ci].text = val
 
     @classmethod
     def generate_ro_mco_docx(cls, template_path: str, out_path: str, records: list[dict]):
@@ -564,6 +586,7 @@ class MCODocumentGenerator:
             return
 
         cls._populate_ro_mco_doc(base_doc, records[0])
+        sectPr = base_doc.element.body.find(docx.oxml.ns.qn('w:sectPr'))
         for rec in records[1:]:
             base_doc.add_page_break()
             temp_doc = docx.Document(template_path)
@@ -571,7 +594,10 @@ class MCODocumentGenerator:
             for el in temp_doc.element.body:
                 if el.tag.endswith('sectPr'):
                     continue
-                base_doc.element.body.append(el)
+                if sectPr is not None:
+                    sectPr.addprevious(el)
+                else:
+                    base_doc.element.body.append(el)
 
         base_doc.save(out_path)
 
@@ -666,10 +692,10 @@ class MCODocumentGenerator:
 
     @classmethod
     def generate_sub_division_pdf(cls, out_path: str, records: list[dict]):
-        doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+        doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=30, bottomMargin=30)
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=12, alignment=1, spaceAfter=2)
-        sub_title_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, alignment=1, spaceAfter=8)
+        title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, alignment=1, spaceAfter=2)
+        sub_title_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=1, spaceAfter=6)
         label_style = ParagraphStyle('LabelStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=12)
         label_bold = ParagraphStyle('LabelBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12)
         table_cell = ParagraphStyle('TableCell', parent=styles['Normal'], fontName='Helvetica', fontSize=8, alignment=1)
@@ -681,46 +707,44 @@ class MCODocumentGenerator:
                 story.append(PageBreak())
 
             formatted_ac = cls.format_account_no(rec.get("reference", ""))
-            story.append(Paragraph(f"<b>Book No:</b> <u>{rec.get('sco_no', '___________')}</u>", label_style))
+            sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
+
+            # Book No: Right aligned
+            story.append(Paragraph(f"<b>Book No:</b> <u>&nbsp;<b>{rec.get('sco_no', '___________')}</b>&nbsp;</u>", ParagraphStyle('BookNoR', parent=label_style, alignment=2, fontSize=11)))
+            story.append(Spacer(1, 2))
             story.append(Paragraph("WATER & POWER DEVELOPMENT AUTHORITY", title_style))
             story.append(Paragraph("POWER WING", sub_title_style))
+            story.append(Spacer(1, 2))
 
-            header_table_data = [
-                [
-                    Paragraph(f"<b>Office:</b> <u>SDO (E) PESCO {rec.get('sub_division', '').upper()}</u>", label_style),
-                    Paragraph("<b>METER CHANGE ORDER</b>", ParagraphStyle('MCO', parent=title_style, fontSize=11)),
-                    Paragraph(f"<b>Date:</b> <u>{rec.get('date', '___________')}</u>", ParagraphStyle('RightDate', parent=label_style, alignment=2))
-                ]
-            ]
-            ht = Table(header_table_data, colWidths=[200, 180, 140])
-            ht.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
-            story.append(ht)
-            story.append(Spacer(1, 8))
+            story.append(Paragraph(f"Office: ______________________________<b><u>SDO (E) PESCO {sub_div_name}</u></b>____________________________________________", label_style))
+            story.append(Spacer(1, 4))
+            story.append(Paragraph("<b>METER CHANGE ORDER</b>", ParagraphStyle('MCO', parent=title_style, fontSize=11, spaceAfter=2)))
+            story.append(Paragraph(f"Date: <u>&nbsp;<b>{rec.get('date', '__________')}</b>&nbsp;</u>", ParagraphStyle('DateR', parent=label_style, alignment=2)))
+            story.append(Spacer(1, 4))
 
-            sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
-            story.append(Paragraph(f"<b>Consumer's Name:</b> <u>{rec.get('name', '')}</u>", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph(f"<b>Address:</b> <u>{rec.get('address', '')}</u>", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph(f"<b>Feeder No:</b> <u>{rec.get('feeder', '')}</u>", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph(f"<b>Reason For Change:</b> <u>Replacement</u> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Sim No:</b> <u>{rec.get('sim_no', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Sim ID:</b> <u>{rec.get('sim_id', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Telco:</b> <u>{rec.get('telco', '')}</u>", label_style))
-            story.append(Spacer(1, 6))
+            story.append(Paragraph(f"Consumer's Name: ______<b><u>{rec.get('name', '')}</u></b>_______________________________________________________", label_style))
+            story.append(Spacer(1, 3))
+            story.append(Paragraph(f"Address: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_________<b><u>{rec.get('address', '')}</u></b>________________________________________", label_style))
+            story.append(Spacer(1, 3))
+            story.append(Paragraph(f"Feeder No: _____________<b><u>{rec.get('feeder', '')}</u></b>___________________________________________________________", label_style))
+            story.append(Spacer(1, 3))
+            story.append(Paragraph(f"Reason For Change: ____________<b><u>Replacement</u></b>____________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Sim No: <b><u>{rec.get('sim_no', '')}</u></b> &nbsp;&nbsp; Sim ID: <b><u>{rec.get('sim_id', '')}</u></b> &nbsp;&nbsp; Telco: <b><u>{rec.get('telco', '')}</u></b>", label_style))
+            story.append(Spacer(1, 5))
 
             to_data = [
                 [
-                    Paragraph("<b>To,</b><br/>&nbsp;&nbsp;&nbsp;&nbsp;<b>Line Superintendent,</b>", label_style),
-                    Paragraph(f"<b>Account No:</b> <u>{formatted_ac}</u>", ParagraphStyle('AcR', parent=label_bold, alignment=2))
+                    Paragraph("To,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Line Superintendent,", label_style),
+                    Paragraph(f"Account No: &nbsp;&nbsp;&nbsp;&nbsp;<b><u>{formatted_ac}</u></b>", ParagraphStyle('AcR', parent=label_style, alignment=2, fontSize=11))
                 ]
             ]
             story.append(Table(to_data, colWidths=[260, 260]))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;<i>Please change meter on premises of above consumer and report below.</i>", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph(f"<b>Sub-Divisional Officer:</b> <u>SDO PESCO {sub_div_name} SUB DIVISION</u> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Date:</b> <u>{rec.get('date', '')}</u>", label_style))
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 3))
+            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;Please change meter on premises of above consumer and report below", label_style))
+            story.append(Spacer(1, 3))
+            story.append(Paragraph("Sub-Divisional Officer: ____________________ &nbsp;&nbsp;&nbsp;&nbsp; Date: ________________", ParagraphStyle('SdoR', parent=label_style, alignment=2)))
+            story.append(Spacer(1, 6))
             story.append(Paragraph("<b>REPORT</b>", ParagraphStyle('Rep', parent=title_style, fontSize=10, alignment=1)))
-            story.append(Spacer(1, 4))
+            story.append(Spacer(1, 3))
 
             meter_table_data = [
                 [Paragraph("<b>Meter Installed</b>", table_cell_bold)] + [""] * 8,
