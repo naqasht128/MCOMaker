@@ -44,6 +44,8 @@ from bs4 import BeautifulSoup
 import openpyxl
 from openpyxl import load_workbook
 import docx
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
 
 # ReportLab for native PDF generation
 from reportlab.lib.pagesizes import A4
@@ -96,12 +98,25 @@ def set_dark_title_bar(window: tk.Tk | tk.Toplevel):
     try:
         import ctypes
         window.update_idletasks()
-        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        hwnds = []
+        try:
+            hwnds.append(int(window.wm_frame(), 16))
+        except Exception:
+            pass
+        try:
+            parent_h = ctypes.windll.user32.GetParent(window.winfo_id())
+            if parent_h:
+                hwnds.append(parent_h)
+        except Exception:
+            pass
+        hwnds.append(window.winfo_id())
+
         value = ctypes.c_int(1)
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(
-            hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value)
-        )
+        for h in set(hwnds):
+            if h:
+                # DWMWA_USE_IMMERSIVE_DARK_MODE: 20 for Win 11 & Win 10 (20H1+), 19 for older Win 10
+                if ctypes.windll.dwmapi.DwmSetWindowAttribute(h, 20, ctypes.byref(value), ctypes.sizeof(value)) != 0:
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(h, 19, ctypes.byref(value), ctypes.sizeof(value))
     except Exception:
         pass
 
@@ -533,53 +548,85 @@ class MCODocumentGenerator:
         sub_div = raw_ac[2:7] if len(raw_ac) >= 7 else ""
         ac_num = raw_ac[7:14] if len(raw_ac) >= 14 else raw_ac[7:]
 
+        def _format_cell(cell, text: str, bold: bool = True, center: bool = True, font_size_pt: float = 9):
+            p = cell.paragraphs[0]
+            for r in list(p.runs):
+                r._r.getparent().remove(r._r)
+            if center:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(str(text))
+            run.bold = bold
+            if font_size_pt:
+                run.font.size = Pt(font_size_pt)
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
+
+        # Table 1: TYPE OF TRANSACTION
+        # b) Replacement Bold and tick mark on right: 1- REPLACEMENT ✓
+        # l) Name & Address on RO MCO is not needed. may remain blank as presented.
         if len(doc.tables) >= 2:
             t1 = doc.tables[1]
-            t1.rows[0].cells[0].text = "[X] 1- REPLACEMENT"
-            t1.rows[0].cells[4].text = f"Name & Address: {rec.get('name', '')}"
-            t1.rows[1].cells[4].text = f"of Consumer: {rec.get('address', '')}"
+            _format_cell(t1.rows[0].cells[0], "1- REPLACEMENT ✓", bold=True, center=False, font_size_pt=9.5)
+            # t1.rows[0].cells[4] and t1.rows[1].cells[4] remain blank as formatted in template
 
+        # Table 2: Reference Number & MCO details
+        # a) Type section may remain blank, no need to fill "MCO" in it.
+        # c) Old and new No. of KWH meter may remain blank
+        # d) Font size as in attached file enteries should be bold.
+        # e) all enteries in centered.
         if len(doc.tables) >= 3:
             t2 = doc.tables[2]
             r2 = t2.rows[2].cells
-            r2[0].text = batch_no
-            r2[1].text = sub_div
-            r2[2].text = ac_num
-            r2[3].text = "MCO"
-            r2[4].text = rec.get("tariff", "A-1A(01)")
-            r2[5].text = rec.get("sco_no", "")
-            r2[6].text = rec.get("date", "")
-            r2[7].text = rec.get("date", "")
-            r2[8].text = "1"
-            r2[9].text = "1"
+            _format_cell(r2[0], batch_no, bold=True, center=True)
+            _format_cell(r2[1], sub_div, bold=True, center=True)
+            _format_cell(r2[2], ac_num, bold=True, center=True)
+            _format_cell(r2[3], "", bold=False, center=True)             # a) Type blank
+            _format_cell(r2[4], "", bold=False, center=True)             # TRF blank
+            _format_cell(r2[5], rec.get("sco_no", ""), bold=True, center=True)
+            _format_cell(r2[6], rec.get("date", ""), bold=True, center=True)
+            _format_cell(r2[7], rec.get("date", ""), bold=True, center=True)
+            _format_cell(r2[8], "", bold=False, center=True)             # c) Old blank
+            _format_cell(r2[9], "", bold=False, center=True)             # c) New blank
 
+        # Table 3: METER REMOVED
+        # f) Advance Units may be blank
+        # g) Multiplying Factor maybe blank
+        # h) Meter Reading (last cell) may be blank
         if len(doc.tables) >= 4:
             t3 = doc.tables[3]
             r_rem = t3.rows[2].cells
-            r_rem[3].text = str(rec.get("meter_no", ""))
-            r_rem[4].text = str(rec.get("present_reading", ""))
-            r_rem[5].text = "0"
-            r_rem[6].text = ""
-            r_rem[7].text = "1"
-            r_rem[8].text = str(rec.get("present_reading", ""))
+            old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
+            reading = str(rec.get("present_reading") or "")
+            _format_cell(r_rem[3], old_meter, bold=True, center=True)
+            _format_cell(r_rem[4], reading, bold=True, center=True)
+            _format_cell(r_rem[5], "", bold=False, center=True)          # f) Advance Units blank
+            _format_cell(r_rem[6], "", bold=False, center=True)          # Round Comp Code blank
+            _format_cell(r_rem[7], "", bold=False, center=True)          # g) Multiplying Factor blank
+            _format_cell(r_rem[8], "", bold=False, center=True)          # h) Meter Reading blank
 
+        # Table 4: METER INSTALLED
+        # i) I filled location code, manfg code, meter codes. they may remain it is as i filed.
+        # LocationCode: O, ManfgCode: 12, MeterCode: 002, MultiplyingFactor: 1, MeterReading: 00000, Initial MeterReading: 00000
         if len(doc.tables) >= 5:
             t4 = doc.tables[4]
             r_inst = t4.rows[2].cells
-            r_inst[4].text = str(rec.get("msn", ""))
-            r_inst[5].text = ""
-            r_inst[6].text = ""
-            r_inst[7].text = ""
-            r_inst[8].text = "1"
-            r_inst[9].text = "00000"
-            r_inst[10].text = "00000"
+            _format_cell(r_inst[4], str(rec.get("msn", "")), bold=True, center=True)
+            _format_cell(r_inst[5], "O", bold=True, center=True)         # Location Code
+            _format_cell(r_inst[6], "12", bold=True, center=True)        # Manfg Code
+            _format_cell(r_inst[7], "002", bold=True, center=True)       # Meter Code
+            _format_cell(r_inst[8], "1", bold=True, center=True)         # Multiplying Factor
+            _format_cell(r_inst[9], "00000", bold=True, center=True)     # Meter Reading
+            _format_cell(r_inst[10], "00000", bold=True, center=True)    # Initial Meter Reading
             if len(t4.rows) >= 7:
-                t4.rows[6].cells[1].text = f"Feeder Code: {rec.get('feeder', '')}"
+                _format_cell(t4.rows[6].cells[1], f"Feeder Code: {rec.get('feeder', '')}", bold=True, center=False)
 
+        # Paragraphs:
+        # j) Reason just "MCO"
+        # k) Sim No & Id & Telco not needed on RO MCO
         for p in doc.paragraphs:
             txt = p.text
             if "Reason" in txt and "_" in txt:
-                p.text = f"Reason: NON AMR TO AMR S/P (GOVT METER)  |  Sim: {rec.get('sim_no', '')}  |  Sim ID: {rec.get('sim_id', '')}  |  Telco: {rec.get('telco', '')}"
+                p.text = "Reason: ___________MCO_______"
             elif "Authority" in txt and "_" in txt:
                 p.text = "Authority: SDO (E) PESCO"
 
@@ -738,16 +785,18 @@ class MCODocumentGenerator:
             story.append(Paragraph("METER DATA CHANGE FORM", center_title))
             story.append(Paragraph("TYPE OF TRANSACTION", center_sub))
 
+            # b) Replacement Bold and tick mark on right
+            # l) Name & Address on RO MCO is not needed. may remain blank as presented.
             trans_table = [
                 [
-                    Paragraph("<b>[X] 1- REPLACEMENT</b>", cell_left_b),
-                    Paragraph("<b>[  ] 2- RECONNECTION</b>", cell_left),
-                    Paragraph(f"<b>Name & Address:</b> <u>{rec.get('name', '')}</u>", cell_left)
+                    Paragraph("<b>1- REPLACEMENT &#x2713;</b>", cell_left_b),
+                    Paragraph("2-   RECONNECTION", cell_left),
+                    Paragraph("Name &amp; Address: ____________________________", cell_left)
                 ],
                 [
-                    Paragraph("<b>[  ] 3- TEMPORARY DISCONN.</b>", cell_left),
-                    Paragraph("<b>[  ] 4- PERMANENT DISCONN.</b>", cell_left),
-                    Paragraph(f"<b>of Consumer:</b> <u>{rec.get('address', '')}</u>", cell_left)
+                    Paragraph("3-   TEMPORARY DISCONNECTION", cell_left),
+                    Paragraph("4-   PERMANENT DISCONNECTION", cell_left),
+                    Paragraph("of Consumer: ____________________________", cell_left)
                 ]
             ]
             tt = Table(trans_table, colWidths=[150, 150, 240])
@@ -759,6 +808,10 @@ class MCODocumentGenerator:
             story.append(tt)
             story.append(Spacer(1, 6))
 
+            # a) Type section blank
+            # c) Old and new blank
+            # d) bold entries
+            # e) centered entries
             ref_table = [
                 [
                     Paragraph("<b>Reference Number</b>", cell_sb), "", "",
@@ -771,9 +824,9 @@ class MCODocumentGenerator:
                     Paragraph("Issue Date", cell_sb), Paragraph("Execution Date", cell_sb), Paragraph("Old", cell_sb), Paragraph("New", cell_sb),
                 ],
                 [
-                    Paragraph(batch_no, cell_s), Paragraph(sub_div, cell_s), Paragraph(ac_num, cell_s),
-                    Paragraph("MCO", cell_s), Paragraph(rec.get("tariff", "A-1A(01)"), cell_s), Paragraph(rec.get("sco_no", ""), cell_s),
-                    Paragraph(rec.get("date", ""), cell_s), Paragraph(rec.get("date", ""), cell_s), Paragraph("1", cell_s), Paragraph("1", cell_s),
+                    Paragraph(f"<b>{batch_no}</b>", cell_sb), Paragraph(f"<b>{sub_div}</b>", cell_sb), Paragraph(f"<b>{ac_num}</b>", cell_sb),
+                    Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph(f"<b>{rec.get('sco_no', '')}</b>", cell_sb),
+                    Paragraph(f"<b>{rec.get('date', '')}</b>", cell_sb), Paragraph(f"<b>{rec.get('date', '')}</b>", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb),
                 ]
             ]
             rt = Table(ref_table, colWidths=[45, 55, 65, 40, 50, 60, 65, 65, 45, 50])
@@ -790,6 +843,9 @@ class MCODocumentGenerator:
             story.append(Spacer(1, 6))
 
             story.append(Paragraph("<b>METER REMOVED</b>", ParagraphStyle('MR', parent=center_sub, alignment=0)))
+            old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
+            reading = str(rec.get("present_reading") or "")
+            # f) Advance Units blank, g) Multiplying Factor blank, h) Meter Reading blank
             rem_table = [
                 [
                     Paragraph("For Gen<br/>Meter No.", cell_sb), Paragraph("For MDI<br/>Type", cell_sb),
@@ -798,9 +854,9 @@ class MCODocumentGenerator:
                     Paragraph("Round Comp Code", cell_sb), Paragraph("Multiplying Factor", cell_sb), Paragraph("Meter Reading", cell_sb),
                 ],
                 [
-                    Paragraph("1.", cell_s), Paragraph("KWH", cell_s), Paragraph("", cell_s),
-                    Paragraph(str(rec.get("meter_no", "")), cell_s), Paragraph(str(rec.get("present_reading", "")), cell_s),
-                    Paragraph("0", cell_s), Paragraph("", cell_s), Paragraph("1", cell_s), Paragraph(str(rec.get("present_reading", "")), cell_s),
+                    Paragraph("1.", cell_sb), Paragraph("KWH", cell_sb), Paragraph("", cell_sb),
+                    Paragraph(f"<b>{old_meter}</b>", cell_sb), Paragraph(f"<b>{reading}</b>", cell_sb),
+                    Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb),
                 ],
                 [
                     Paragraph("2.", cell_s), Paragraph("KVARH", cell_s), Paragraph("", cell_s),
@@ -822,17 +878,18 @@ class MCODocumentGenerator:
             story.append(Spacer(1, 6))
 
             story.append(Paragraph("<b>METER INSTALLED</b>", ParagraphStyle('MI', parent=center_sub, alignment=0)))
+            # i) Location Code: O, Manfg Code: 12, Meter Code: 002, Multiplying Factor: 1, Meter Reading: 00000, Initial Meter Reading: 00000
             inst_table = [
                 [
                     Paragraph("For Gen<br/>Meter No.", cell_sb), Paragraph("For MDI<br/>Type", cell_sb),
                     Paragraph("For MDI<br/>Set No.", cell_sb), Paragraph("Meter Number", cell_sb),
-                    Paragraph("Loc. Code", cell_sb), Paragraph("Manfg Code", cell_sb), Paragraph("Meter Code", cell_sb),
+                    Paragraph("Location Code", cell_sb), Paragraph("Manfg Code", cell_sb), Paragraph("Meter Code", cell_sb),
                     Paragraph("Multiplying Factor", cell_sb), Paragraph("Meter Reading", cell_sb), Paragraph("Initial Reading", cell_sb),
                 ],
                 [
-                    Paragraph("1.", cell_s), Paragraph("KWH", cell_s), Paragraph("", cell_s),
-                    Paragraph(str(rec.get("msn", "")), cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s),
-                    Paragraph("1", cell_s), Paragraph("00000", cell_s), Paragraph("00000", cell_s),
+                    Paragraph("1.", cell_sb), Paragraph("KWH", cell_sb), Paragraph("", cell_sb),
+                    Paragraph(f"<b>{rec.get('msn', '')}</b>", cell_sb), Paragraph("<b>O</b>", cell_sb), Paragraph("<b>12</b>", cell_sb), Paragraph("<b>002</b>", cell_sb),
+                    Paragraph("<b>1</b>", cell_sb), Paragraph("<b>00000</b>", cell_sb), Paragraph("<b>00000</b>", cell_sb),
                 ],
                 [
                     Paragraph("2.", cell_s), Paragraph("KVARH", cell_s), Paragraph("", cell_s),
@@ -844,7 +901,7 @@ class MCODocumentGenerator:
                 ],
                 [
                     Paragraph(f"<b>Feeder Code:</b> {rec.get('feeder', '')}", cell_left_b), "", "", "", "",
-                    "", "", Paragraph("<b>Cum MDI:</b>", cell_left_b), "", ""
+                    "", "", Paragraph("<b>Cum MDI –</b>", cell_left_b), "", ""
                 ]
             ]
             imt = Table(inst_table, colWidths=[45, 45, 45, 85, 45, 50, 45, 60, 60, 60])
@@ -861,7 +918,9 @@ class MCODocumentGenerator:
             story.append(Paragraph("* For Reconnection only", ParagraphStyle('Reconn', parent=small_header, fontSize=6)))
             story.append(Spacer(1, 4))
 
-            story.append(Paragraph(f"<b>Reason:</b> <u>NON AMR TO AMR S/P (GOVT METER)</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Sim:</b> <u>{rec.get('sim_no', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Sim ID:</b> <u>{rec.get('sim_id', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Telco:</b> <u>{rec.get('telco', '')}</u>", cell_left))
+            # j) Reason just "MCO"
+            # k) Sim No & Id & Telco not needed on RO MCO
+            story.append(Paragraph("<b>Reason:</b> <u>___________MCO_______</u>", cell_left))
             story.append(Spacer(1, 3))
             story.append(Paragraph("<b>Authority:</b> <u>SDO (E) PESCO</u>", cell_left))
             story.append(Spacer(1, 8))
@@ -971,7 +1030,9 @@ class LicenseGateDialog(tk.Toplevel):
         self.geometry("520x510")
         self.resizable(False, False)
         self.configure(bg=CARD_BG)
+        self.update_idletasks()
         set_dark_title_bar(self)
+        self.after(50, lambda: set_dark_title_bar(self))
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.transient(parent)
@@ -1118,7 +1179,10 @@ class MCOMakerApp(tk.Tk):
         self.geometry("640x630")
         self.minsize(580, 540)
         self.configure(bg=BG_DARK)
+        self.update_idletasks()
         set_dark_title_bar(self)
+        self.after(50, lambda: set_dark_title_bar(self))
+        self.after(200, lambda: set_dark_title_bar(self))
 
         # Set application icon
         try:
@@ -1148,6 +1212,9 @@ class MCOMakerApp(tk.Tk):
 
     def _on_activated(self):
         self.deiconify()
+        self.update_idletasks()
+        set_dark_title_bar(self)
+        self.after(50, lambda: set_dark_title_bar(self))
         self._start_main()
 
     def _start_main(self):
@@ -1551,7 +1618,9 @@ class MCOMakerApp(tk.Tk):
         dlg.geometry("440x240")
         dlg.resizable(False, False)
         dlg.configure(bg=CARD_BG)
+        dlg.update_idletasks()
         set_dark_title_bar(dlg)
+        dlg.after(50, lambda: set_dark_title_bar(dlg))
         dlg.transient(self)
         dlg.grab_set()
 
@@ -1620,13 +1689,15 @@ class MCOMakerApp(tk.Tk):
 
             res = messagebox.askyesno(
                 "MCO Generated",
-                f"MCO documents successfully generated!\n\nSaved to: {save_path}\n\nWould you like to open the folder?"
+                f"MCO documents successfully generated!\n\nSaved to: {save_path}\n\nWould you like to open the file now?"
             )
             if res:
                 if sys.platform == "win32":
-                    os.startfile(os.path.dirname(save_path))
+                    os.startfile(save_path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", save_path])
                 else:
-                    subprocess.Popen(["xdg-open", os.path.dirname(save_path)])
+                    subprocess.Popen(["xdg-open", save_path])
 
         except Exception as e:
             messagebox.showerror("Generation Error", f"Failed to generate MCO:\n\n{e}")
@@ -1637,19 +1708,21 @@ class MCOMakerApp(tk.Tk):
         dlg.geometry("480x420")
         dlg.resizable(False, False)
         dlg.configure(bg=CARD_BG)
-        set_dark_title_bar(dlg)
         dlg.transient(self)
         dlg.grab_set()
+        dlg.update_idletasks()
+        set_dark_title_bar(dlg)
+        dlg.after(50, lambda: set_dark_title_bar(dlg))
 
         tk.Label(
             dlg, text=f"⚡ {APP_NAME} v{APP_VERSION}",
             font=(UI_FONT, 14, "bold"), fg=TEXT_WHITE, bg=CARD_BG
-        ).pack(pady=(20, 2))
+        ).pack(pady=(16, 2))
 
         tk.Label(
             dlg, text=APP_SUBTITLE,
             font=(UI_FONT, 9), fg=TEXT_MUTED, bg=CARD_BG
-        ).pack(pady=(0, 16))
+        ).pack(pady=(0, 12))
 
         # License card
         lic_card = tk.Frame(dlg, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
@@ -1671,18 +1744,56 @@ class MCOMakerApp(tk.Tk):
 
         # Support card
         sup_card = tk.Frame(dlg, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        sup_card.pack(fill="x", padx=24, pady=10)
+        sup_card.pack(fill="x", padx=24, pady=8)
 
         tk.Label(sup_card, text="Developer & Support Information", font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=INPUT_BG).pack(anchor="w", padx=12, pady=(8, 4))
         tk.Label(sup_card, text="TN Developers Co.", font=(UI_FONT, 9), fg=TEXT_MAIN, bg=INPUT_BG).pack(anchor="w", padx=12, pady=1)
         tk.Label(sup_card, text="Email: tahir.naqash4@gmail.com", font=(UI_FONT, 8), fg=TEXT_MUTED, bg=INPUT_BG).pack(anchor="w", padx=12, pady=1)
         tk.Label(sup_card, text="WhatsApp: +92 333 9962474", font=(UI_FONT, 8), fg=TEXT_MUTED, bg=INPUT_BG).pack(anchor="w", padx=12, pady=(1, 8))
 
+        # Action Buttons
+        btn_row = tk.Frame(dlg, bg=CARD_BG)
+        btn_row.pack(fill="x", padx=24, pady=(10, 14))
+
         tk.Button(
-            dlg, text="Close", font=(UI_FONT, 9), fg=TEXT_WHITE, bg=BTN_SEC_BG,
-            activebackground=BTN_SEC_HOVER, relief="flat", padx=16, pady=4, cursor="hand2",
+            btn_row, text="🔄  Check for Updates", font=(UI_FONT, 9, "bold"),
+            fg=TEXT_WHITE, bg=ACCENT_BLUE, activebackground=ACCENT_BLUE_HOVER,
+            relief="flat", padx=14, pady=5, cursor="hand2",
+            command=lambda: self._check_updates_dialog(dlg)
+        ).pack(side="left")
+
+        tk.Button(
+            btn_row, text="Close", font=(UI_FONT, 9), fg=TEXT_WHITE, bg=BTN_SEC_BG,
+            activebackground=BTN_SEC_HOVER, relief="flat", padx=16, pady=5, cursor="hand2",
             command=dlg.destroy
-        ).pack(pady=12)
+        ).pack(side="right")
+
+    def _check_updates_dialog(self, parent_dlg):
+        """Check for updates and show result in messagebox."""
+        try:
+            url = f"{LICENSE_API_URL}/api/updates/latest"
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                latest = data.get("latest_version", "")
+                if data.get("update_available") and latest and latest != APP_VERSION:
+                    dl_url = data.get("download_url", "https://github.com/naqasht128/MCOMaker/releases")
+                    res = messagebox.askyesno(
+                        "Update Available",
+                        f"A new version of MCO Maker (v{latest}) is available!\n\nWould you like to open the download page?",
+                        parent=parent_dlg
+                    )
+                    if res:
+                        webbrowser.open(dl_url)
+                    return
+        except Exception:
+            pass
+
+        messagebox.showinfo(
+            "Software Up to Date",
+            f"You are currently running {APP_NAME} v{APP_VERSION}.\n\nThis is the latest version available.",
+            parent=parent_dlg
+        )
 
 
 def start_app():
