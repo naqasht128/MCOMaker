@@ -898,7 +898,7 @@ class LicenseManager:
     def _read_cache(self) -> dict | None:
         if self.license_file.exists():
             try:
-                return json.loads(self.license_file.read_text(encoding="utf-8"))
+                return json.loads(self.license_file.read_text(encoding="utf-8-sig"))
             except Exception:
                 pass
         return None

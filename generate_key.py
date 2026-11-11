@@ -35,7 +35,7 @@ def load_admin_config() -> dict:
     p = get_admin_config_path()
     if p.is_file():
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            return json.loads(p.read_text(encoding="utf-8-sig"))
         except Exception:
             pass
     return {}
