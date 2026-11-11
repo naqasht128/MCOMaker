@@ -608,77 +608,81 @@ class MCODocumentGenerator:
         sub_div = raw_ac[2:7] if len(raw_ac) >= 7 else ""
         ac_num = raw_ac[7:14] if len(raw_ac) >= 14 else raw_ac[7:]
 
-        def _format_cell(cell, text: str, bold: bool = True, center: bool = True, font_size_pt: float = 9):
+        def _set_cell_text(cell, text: str, bold: bool = True, center: bool = True, font_size_pt: float = 11.0):
             p = cell.paragraphs[0]
-            for r in list(p.runs):
-                r._r.getparent().remove(r._r)
+            if p.runs:
+                p.runs[0].text = str(text)
+                for r in p.runs[1:]:
+                    r.text = ""
+                p.runs[0].bold = bold
+                if font_size_pt:
+                    p.runs[0].font.size = Pt(font_size_pt)
+            else:
+                run = p.add_run(str(text))
+                run.bold = bold
+                if font_size_pt:
+                    run.font.size = Pt(font_size_pt)
             if center:
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(str(text))
-            run.bold = bold
-            if font_size_pt:
-                run.font.size = Pt(font_size_pt)
-            p.paragraph_format.space_before = Pt(0)
-            p.paragraph_format.space_after = Pt(0)
 
         # Table 1: TYPE OF TRANSACTION
-        # b) Replacement Bold and tick mark on right: 1- REPLACEMENT ✓
-        # l) Name & Address on RO MCO is not needed. may remain blank as presented.
-        if len(doc.tables) >= 2:
-            t1 = doc.tables[1]
-            _format_cell(t1.rows[0].cells[0], "1- REPLACEMENT ✓", bold=True, center=False, font_size_pt=9.5)
-            # t1.rows[0].cells[4] and t1.rows[1].cells[4] remain blank as formatted in template
+        # 1- REPLACEMENT ✓ is already bold with tick mark in user template
+        # Name & Address: ____________________________ and of Consumer: ____________________________ remain blank
 
         # Table 2: Reference Number & MCO details
-        # a) Type section may remain blank, no need to fill "MCO" in it.
-        # c) Old and new No. of KWH meter may remain blank
-        # d) Font size as in attached file enteries should be bold.
-        # e) all enteries in centered.
+        # a) Type section blank, TRF blank
+        # c) Old and new blank
+        # d) Font size 11pt, bold
+        # e) Centered
         if len(doc.tables) >= 3:
             t2 = doc.tables[2]
             r2 = t2.rows[2].cells
-            _format_cell(r2[0], batch_no, bold=True, center=True)
-            _format_cell(r2[1], sub_div, bold=True, center=True)
-            _format_cell(r2[2], ac_num, bold=True, center=True)
-            _format_cell(r2[3], "", bold=False, center=True)             # a) Type blank
-            _format_cell(r2[4], "", bold=False, center=True)             # TRF blank
-            _format_cell(r2[5], rec.get("sco_no", ""), bold=True, center=True)
-            _format_cell(r2[6], rec.get("date", ""), bold=True, center=True)
-            _format_cell(r2[7], rec.get("date", ""), bold=True, center=True)
-            _format_cell(r2[8], "", bold=False, center=True)             # c) Old blank
-            _format_cell(r2[9], "", bold=False, center=True)             # c) New blank
+            _set_cell_text(r2[0], batch_no, bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r2[1], sub_div, bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r2[2], ac_num, bold=True, center=True, font_size_pt=11.0)
+            r2[3].text = ""  # Type blank
+            r2[4].text = ""  # TRF blank
+            _set_cell_text(r2[5], rec.get("sco_no", ""), bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r2[6], rec.get("date", ""), bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r2[7], rec.get("date", ""), bold=True, center=True, font_size_pt=11.0)
+            r2[8].text = ""  # Old blank
+            r2[9].text = ""  # New blank
 
         # Table 3: METER REMOVED
-        # f) Advance Units may be blank
-        # g) Multiplying Factor maybe blank
-        # h) Meter Reading (last cell) may be blank
+        # f) Advance Units blank, Round Comp Code blank
+        # g) Multiplying Factor blank
+        # h) Meter Reading (last cell) blank
         if len(doc.tables) >= 4:
             t3 = doc.tables[3]
             r_rem = t3.rows[2].cells
             old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
             reading = str(rec.get("present_reading") or "")
-            _format_cell(r_rem[3], old_meter, bold=True, center=True)
-            _format_cell(r_rem[4], reading, bold=True, center=True)
-            _format_cell(r_rem[5], "", bold=False, center=True)          # f) Advance Units blank
-            _format_cell(r_rem[6], "", bold=False, center=True)          # Round Comp Code blank
-            _format_cell(r_rem[7], "", bold=False, center=True)          # g) Multiplying Factor blank
-            _format_cell(r_rem[8], "", bold=False, center=True)          # h) Meter Reading blank
+            _set_cell_text(r_rem[3], old_meter, bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_rem[4], reading, bold=True, center=True, font_size_pt=11.0)
+            r_rem[5].text = ""  # Advance Units blank
+            r_rem[6].text = ""  # Round Comp Code blank
+            r_rem[7].text = ""  # Multiplying Factor blank
+            r_rem[8].text = ""  # Meter Reading blank
 
         # Table 4: METER INSTALLED
-        # i) I filled location code, manfg code, meter codes. they may remain it is as i filed.
-        # LocationCode: O, ManfgCode: 12, MeterCode: 002, MultiplyingFactor: 1, MeterReading: 00000, Initial MeterReading: 00000
+        # i) Location Code: O, Manfg Code: 12, Meter Code: 002, Multiplying Factor: 1, Meter Reading: 00000, Initial Meter Reading: 00000
+        # feeder code remains blank
         if len(doc.tables) >= 5:
             t4 = doc.tables[4]
             r_inst = t4.rows[2].cells
-            _format_cell(r_inst[4], str(rec.get("msn", "")), bold=True, center=True)
-            _format_cell(r_inst[5], "O", bold=True, center=True)         # Location Code
-            _format_cell(r_inst[6], "12", bold=True, center=True)        # Manfg Code
-            _format_cell(r_inst[7], "002", bold=True, center=True)       # Meter Code
-            _format_cell(r_inst[8], "1", bold=True, center=True)         # Multiplying Factor
-            _format_cell(r_inst[9], "00000", bold=True, center=True)     # Meter Reading
-            _format_cell(r_inst[10], "00000", bold=True, center=True)    # Initial Meter Reading
+            _set_cell_text(r_inst[4], str(rec.get("msn", "")), bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[5], "O", bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[6], "12", bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[7], "002", bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[8], "1", bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[9], "00000", bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[10], "00000", bold=True, center=True, font_size_pt=11.0)
             if len(t4.rows) >= 7:
-                _format_cell(t4.rows[6].cells[1], f"Feeder Code: {rec.get('feeder', '')}", bold=True, center=False)
+                c_feeder = t4.rows[6].cells[1]
+                if c_feeder.paragraphs and c_feeder.paragraphs[0].runs:
+                    c_feeder.paragraphs[0].runs[0].text = "Feeder Code: "
+                else:
+                    c_feeder.text = "Feeder Code: "
 
         # Paragraphs:
         # j) Reason just "MCO"
@@ -959,7 +963,7 @@ class MCODocumentGenerator:
                     Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s),
                 ],
                 [
-                    Paragraph(f"<b>Feeder Code:</b> {rec.get('feeder', '')}", cell_left_b), "", "", "", "",
+                    Paragraph("<b>Feeder Code:</b>", cell_left_b), "", "", "", "",
                     "", "", Paragraph("<b>Cum MDI –</b>", cell_left_b), "", ""
                 ]
             ]
