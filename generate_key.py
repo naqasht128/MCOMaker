@@ -65,10 +65,8 @@ UI_FONT = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
 MONO_FONT = "Consolas" if sys.platform == "win32" else "DejaVu Sans Mono"
 
 PLANS = [
-    ("1_month", "1 Month  —  (30 Days, 1 Device)", 30, 1),
-    ("3_months", "3 Months  —  (90 Days, Up to 2 Devices)", 90, 2),
-    ("6_months", "6 Months  —  (180 Days, Up to 2 Devices)", 180, 2),
-    ("1_year", "1 Year  —  (365 Days, Up to 2 Devices)  [Recommended]", 365, 2),
+    ("6_months", "6 Months  —  Rs. 2,500  (180 Days, Up to 2 Devices)", 180, 2),
+    ("1_year", "1 Year  —  Rs. 5,000  (365 Days, Up to 2 Devices)  [Recommended]", 365, 2),
 ]
 
 
@@ -277,7 +275,7 @@ class AdminKeyGenApp(tk.Tk):
 
 def main():
     parser = argparse.ArgumentParser(description="MCO Maker Admin Key Generator")
-    parser.add_argument("--plan", choices=["1_month", "3_months", "6_months", "1_year"], help="Subscription plan type")
+    parser.add_argument("--plan", choices=["6_months", "1_year"], help="Subscription plan type")
     parser.add_argument("--devices", type=int, default=2, help="Max devices allowed")
     parser.add_argument("--url", default=DEFAULT_API_URL, help="License API URL")
     parser.add_argument("--secret", default=DEFAULT_ADMIN_SECRET, help="Admin secret password")

@@ -142,7 +142,7 @@ Run the owner admin tool to generate subscription keys:
 ```bash
 python generate_key.py
 ```
-- Select plan: 1 Month, 3 Months, 6 Months, or 1 Year
+- Select plan: **6 Months (Rs. 2,500)** or **1 Year (Rs. 5,000)**
 - Click **🔑 Generate Serial Key & Copy**
 - The key (e.g. `MCO-9H3K-8W2Y-X7RM`) is automatically saved in Supabase and copied to your clipboard!
 

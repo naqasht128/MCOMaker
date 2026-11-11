@@ -966,7 +966,7 @@ class LicenseGateDialog(tk.Toplevel):
         self.license_mgr = license_mgr
         self.on_success = on_success
         self.title("MCO Maker — Activation Required")
-        self.geometry("520x460")
+        self.geometry("520x510")
         self.resizable(False, False)
         self.configure(bg=CARD_BG)
         set_dark_title_bar(self)
@@ -1015,11 +1015,28 @@ class LicenseGateDialog(tk.Toplevel):
             command=self._copy_hwid, cursor="hand2"
         ).pack(side="left", padx=(8, 0))
 
+        # Pricing Cards Box
+        price_box = tk.Frame(self, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
+        price_box.pack(fill="x", padx=28, pady=(8, 4))
+
+        tk.Label(
+            price_box, text="Available Subscription Plans:",
+            font=(UI_FONT, 8, "bold"), fg=TEXT_WHITE, bg=INPUT_BG
+        ).pack(anchor="w", padx=12, pady=(6, 2))
+
+        p_row = tk.Frame(price_box, bg=INPUT_BG)
+        p_row.pack(fill="x", padx=12, pady=(0, 6))
+
+        tk.Label(
+            p_row, text="• 6 Months: Rs. 2,500 (180 Days, Up to 2 PCs)\n• 1 Year: Rs. 5,000 (365 Days, Up to 2 PCs) [Recommended]",
+            font=(UI_FONT, 8), fg="#4ec9b0", bg=INPUT_BG, justify="left"
+        ).pack(side="left")
+
         # Serial Key Entry
         tk.Label(
             self, text="Serial Key (e.g. MCO-XXXX-XXXX-XXXX):",
             font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=CARD_BG
-        ).pack(anchor="w", padx=28, pady=(16, 4))
+        ).pack(anchor="w", padx=28, pady=(12, 4))
 
         self.key_var = tk.StringVar()
         self.key_entry = tk.Entry(

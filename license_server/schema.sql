@@ -13,8 +13,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS public.mco_licenses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     serial_key TEXT UNIQUE NOT NULL,
-    plan_type TEXT NOT NULL CHECK (plan_type IN ('1_month', '3_months', '6_months', '1_year')),
-    duration_days INTEGER NOT NULL CHECK (duration_days IN (30, 90, 180, 365)),
+    plan_type TEXT NOT NULL CHECK (plan_type IN ('6_months', '1_year')),
+    duration_days INTEGER NOT NULL CHECK (duration_days IN (180, 365)),
     max_devices INTEGER NOT NULL CHECK (max_devices IN (1, 2, 3)),
     activated_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ,
