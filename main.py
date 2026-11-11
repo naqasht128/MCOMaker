@@ -469,57 +469,91 @@ class MCODocumentGenerator:
     @classmethod
     def _populate_sub_division_doc(cls, doc: docx.Document, rec: dict):
         formatted_ac = cls.format_account_no(rec.get("reference", ""))
+        sub_div_name = rec.get("sub_division", "").strip().upper()
+        if not sub_div_name:
+            sub_div_name = "MANDHRA"
+
+        def _format_cell(cell, text: str, bold: bool = True, center: bool = True, font_size_pt: float = 9):
+            p = cell.paragraphs[0]
+            for r in list(p.runs):
+                r._r.getparent().remove(r._r)
+            if center:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(str(text))
+            run.bold = bold
+            if font_size_pt:
+                run.font.size = Pt(font_size_pt)
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
         
         for p in doc.paragraphs:
             txt = p.text
             if "Book No" in txt:
                 p.text = f"Book No: {rec.get('sco_no', '')}"
             elif "Consumer's Name" in txt:
-                p.text = f"Consumer's Name: {rec.get('name', '')}"
+                p.text = f"Consumer's Name: \t{rec.get('name', '')}_____________________________________________________"
             elif "Address" in txt and "Consumer" not in txt:
-                p.text = f"Address: {rec.get('address', '')}"
+                p.text = f"Address: \t{rec.get('address', '')}_____________________________________________"
             elif "Feeder No" in txt:
-                p.text = f"Feeder No: {rec.get('feeder', '')}"
+                p.text = f"Feeder No: __________{rec.get('feeder', '')}___________________________________________________________"
             elif "Reason For Change" in txt:
-                p.text = f"Reason For Change: NON AMR TO AMR S/P (GOVT METER)  |  Sim No: {rec.get('sim_no', '')}  |  Sim ID: {rec.get('sim_id', '')}  |  Telco: {rec.get('telco', '')}"
+                sim_parts = []
+                if rec.get("sim_no"): sim_parts.append(f"Sim No: {rec.get('sim_no')}")
+                if rec.get("sim_id"): sim_parts.append(f"Sim ID: {rec.get('sim_id')}")
+                if rec.get("telco"): sim_parts.append(f"Telco: {rec.get('telco')}")
+                sim_str = "   ".join(sim_parts)
+                if sim_str:
+                    p.text = f"Reason For Change: ____________Replacement________________________________________________ \t\t{sim_str}"
+                else:
+                    p.text = "Reason For Change: ____________Replacement________________________________________________"
             elif "Sub-Divisional Officer" in txt:
-                p.text = f"Sub-Divisional Officer: SDO PESCO {rec.get('sub_division', '').upper()} SUB DIVISION    Date: {rec.get('date', '')}"
+                p.text = f"Sub-Divisional Officer: SDO PESCO {sub_div_name} SUB DIVISION    Date: {rec.get('date', '')}"
 
         if len(doc.tables) >= 1:
             t0 = doc.tables[0]
-            t0.rows[0].cells[0].text = f"Office: SDO (E) PESCO {rec.get('sub_division', '').upper()}"
-            t0.rows[0].cells[1].text = "METER CHANGE ORDER"
-            t0.rows[0].cells[2].text = f"Date: {rec.get('date', '')}"
+            _format_cell(t0.rows[0].cells[0], f"Office: SDO (E) PESCO {sub_div_name}", bold=False, center=False)
+            _format_cell(t0.rows[0].cells[1], "METER CHANGE ORDER", bold=True, center=True)
+            _format_cell(t0.rows[0].cells[2], f"Date: {rec.get('date', '')}", bold=False, center=False)
 
         if len(doc.tables) >= 2:
             t1 = doc.tables[1]
-            t1.rows[0].cells[1].text = f"Account No: {formatted_ac}"
+            _format_cell(t1.rows[0].cells[1], f"\t\tAccount No: \t{formatted_ac}", bold=False, center=False)
 
         if len(doc.tables) >= 3:
             t2 = doc.tables[2]
+            # Headers MF
+            _format_cell(t2.rows[1].cells[6], "MF", bold=True, center=True)
+            _format_cell(t2.rows[4].cells[6], "MF", bold=True, center=True)
+
             # Row 2: Installed Meter
+            # | Meter No | Make | Const | Amps | Volts | Phase | MF | Read-ing | Range (No of Digits) |
+            # | 3797426593 | | | | | S/P | 1 | 00000 | 5 |
             inst = t2.rows[2].cells
-            inst[0].text = str(rec.get("msn", ""))
-            inst[1].text = ""
-            inst[2].text = ""
-            inst[3].text = "10-40"
-            inst[4].text = "220/230"
-            inst[5].text = "S/P"
-            inst[6].text = "1"
-            inst[7].text = "00000"
-            inst[8].text = "5"
+            _format_cell(inst[0], str(rec.get("msn", "")), bold=True, center=True)
+            _format_cell(inst[1], "", bold=False, center=True)            # Make blank
+            _format_cell(inst[2], "", bold=False, center=True)            # Const blank
+            _format_cell(inst[3], "", bold=False, center=True)            # Amps blank
+            _format_cell(inst[4], "", bold=False, center=True)            # Volts blank
+            _format_cell(inst[5], "S/P", bold=True, center=True)
+            _format_cell(inst[6], "1", bold=True, center=True)
+            _format_cell(inst[7], "00000", bold=True, center=True)
+            _format_cell(inst[8], "5", bold=True, center=True)
 
             # Row 5: Removed Meter
+            # | Meter No | Make | Const | Amps | Volts | Phase | MF | Read-ing | Range (No of Digits) |
+            # | 638425 | | | | | S/P | 1 | 2127 | 5 |
             rem = t2.rows[5].cells
-            rem[0].text = str(rec.get("meter_no", ""))
-            rem[1].text = ""
-            rem[2].text = ""
-            rem[3].text = "10-40"
-            rem[4].text = "220/230"
-            rem[5].text = "S/P"
-            rem[6].text = "1"
-            rem[7].text = str(rec.get("present_reading", ""))
-            rem[8].text = "5"
+            old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
+            reading = str(rec.get("present_reading", ""))
+            _format_cell(rem[0], old_meter, bold=True, center=True)
+            _format_cell(rem[1], "", bold=False, center=True)            # Make blank
+            _format_cell(rem[2], "", bold=False, center=True)            # Const blank
+            _format_cell(rem[3], "", bold=False, center=True)            # Amps blank
+            _format_cell(rem[4], "", bold=False, center=True)            # Volts blank
+            _format_cell(rem[5], "S/P", bold=True, center=True)
+            _format_cell(rem[6], "1", bold=True, center=True)
+            _format_cell(rem[7], reading, bold=True, center=True)
+            _format_cell(rem[8], "5", bold=True, center=True)
 
     @classmethod
     def generate_ro_mco_docx(cls, template_path: str, out_path: str, records: list[dict]):
@@ -663,13 +697,14 @@ class MCODocumentGenerator:
             story.append(ht)
             story.append(Spacer(1, 8))
 
+            sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
             story.append(Paragraph(f"<b>Consumer's Name:</b> <u>{rec.get('name', '')}</u>", label_style))
             story.append(Spacer(1, 4))
             story.append(Paragraph(f"<b>Address:</b> <u>{rec.get('address', '')}</u>", label_style))
             story.append(Spacer(1, 4))
             story.append(Paragraph(f"<b>Feeder No:</b> <u>{rec.get('feeder', '')}</u>", label_style))
             story.append(Spacer(1, 4))
-            story.append(Paragraph(f"<b>Reason For Change:</b> <u>NON AMR TO AMR S/P (GOVT METER)</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Sim No:</b> <u>{rec.get('sim_no', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Sim ID:</b> <u>{rec.get('sim_id', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Telco:</b> <u>{rec.get('telco', '')}</u>", label_style))
+            story.append(Paragraph(f"<b>Reason For Change:</b> <u>Replacement</u> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Sim No:</b> <u>{rec.get('sim_no', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Sim ID:</b> <u>{rec.get('sim_id', '')}</u> &nbsp;&nbsp;&nbsp;&nbsp; <b>Telco:</b> <u>{rec.get('telco', '')}</u>", label_style))
             story.append(Spacer(1, 6))
 
             to_data = [
@@ -682,7 +717,7 @@ class MCODocumentGenerator:
             story.append(Spacer(1, 4))
             story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;<i>Please change meter on premises of above consumer and report below.</i>", label_style))
             story.append(Spacer(1, 4))
-            story.append(Paragraph(f"<b>Sub-Divisional Officer:</b> <u>SDO PESCO {rec.get('sub_division', '').upper()}</u> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Date:</b> <u>{rec.get('date', '')}</u>", label_style))
+            story.append(Paragraph(f"<b>Sub-Divisional Officer:</b> <u>SDO PESCO {sub_div_name} SUB DIVISION</u> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Date:</b> <u>{rec.get('date', '')}</u>", label_style))
             story.append(Spacer(1, 8))
             story.append(Paragraph("<b>REPORT</b>", ParagraphStyle('Rep', parent=title_style, fontSize=10, alignment=1)))
             story.append(Spacer(1, 4))
@@ -693,26 +728,26 @@ class MCODocumentGenerator:
                     Paragraph("Meter No", table_cell_bold), Paragraph("Make", table_cell_bold),
                     Paragraph("Const", table_cell_bold), Paragraph("Amps", table_cell_bold),
                     Paragraph("Volts", table_cell_bold), Paragraph("Phase", table_cell_bold),
-                    Paragraph("Multi-Playing factor", table_cell_bold), Paragraph("Read-ing", table_cell_bold),
-                    Paragraph("Range (Digits)", table_cell_bold),
+                    Paragraph("MF", table_cell_bold), Paragraph("Read-ing", table_cell_bold),
+                    Paragraph("Range (No of Digits)", table_cell_bold),
                 ],
                 [
-                    Paragraph(str(rec.get("msn", "")), table_cell), Paragraph("", table_cell), Paragraph("", table_cell),
-                    Paragraph("10-40", table_cell), Paragraph("220/230", table_cell), Paragraph("S/P", table_cell),
-                    Paragraph("1", table_cell), Paragraph("00000", table_cell), Paragraph("5", table_cell),
+                    Paragraph(f"<b>{str(rec.get('msn', ''))}</b>", table_cell_bold), Paragraph("", table_cell), Paragraph("", table_cell),
+                    Paragraph("", table_cell), Paragraph("", table_cell), Paragraph("<b>S/P</b>", table_cell_bold),
+                    Paragraph("<b>1</b>", table_cell_bold), Paragraph("<b>00000</b>", table_cell_bold), Paragraph("<b>5</b>", table_cell_bold),
                 ],
                 [Paragraph("<b>Meter Removed</b>", table_cell_bold)] + [""] * 8,
                 [
                     Paragraph("Meter No", table_cell_bold), Paragraph("Make", table_cell_bold),
                     Paragraph("Const", table_cell_bold), Paragraph("Amps", table_cell_bold),
                     Paragraph("Volts", table_cell_bold), Paragraph("Phase", table_cell_bold),
-                    Paragraph("Multi-Playing factor", table_cell_bold), Paragraph("Read-ing", table_cell_bold),
-                    Paragraph("Range (Digits)", table_cell_bold),
+                    Paragraph("MF", table_cell_bold), Paragraph("Read-ing", table_cell_bold),
+                    Paragraph("Range (No of Digits)", table_cell_bold),
                 ],
                 [
-                    Paragraph(str(rec.get("meter_no", "")), table_cell), Paragraph("", table_cell), Paragraph("", table_cell),
-                    Paragraph("10-40", table_cell), Paragraph("220/230", table_cell), Paragraph("S/P", table_cell),
-                    Paragraph("1", table_cell), Paragraph(str(rec.get("present_reading", "")), table_cell), Paragraph("5", table_cell),
+                    Paragraph(f"<b>{str(rec.get('old_meter_no') or rec.get('meter_no') or '')}</b>", table_cell_bold), Paragraph("", table_cell), Paragraph("", table_cell),
+                    Paragraph("", table_cell), Paragraph("", table_cell), Paragraph("<b>S/P</b>", table_cell_bold),
+                    Paragraph("<b>1</b>", table_cell_bold), Paragraph(f"<b>{str(rec.get('present_reading', ''))}</b>", table_cell_bold), Paragraph("<b>5</b>", table_cell_bold),
                 ]
             ]
             mt = Table(meter_table_data, colWidths=[90, 45, 45, 50, 55, 45, 65, 65, 60])
