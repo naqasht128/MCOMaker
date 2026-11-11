@@ -16,6 +16,12 @@ dist/
 release-assets/
 redist/
 *.egg-info/
+generate_key.exe
+*.exe
+
+# User Input / Samples
+Sample Formats/
+Sample_Formats/
 
 # License & Local AppData
 license.json
