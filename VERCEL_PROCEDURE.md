@@ -62,7 +62,7 @@ This guide walks you through deploying the **MCO Maker Licensing & Auto-Update S
 |---|---|---|
 | `SUPABASE_URL` | `https://xxxx.supabase.co` | Your Supabase Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Supabase Service Role Secret Key |
-| `ADMIN_SECRET` | `YourChosenSecret2026` | Secret password for generating serial keys |
+| `ADMIN_SECRET` | `TahirNaqash_Secret_2026` | Secret password for generating serial keys |
 | `TABLE_LICENSES` | `mco_licenses` | Multi-tenancy licenses table |
 | `TABLE_DEVICES` | `mco_license_devices` | Multi-tenancy devices table |
 | `TABLE_UPDATES` | `mco_app_updates` | Multi-tenancy updates table |
