@@ -320,7 +320,7 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
     # Step 2: POST query
     res = session.post(base_url, data=payload, timeout=20)
     if "CONSUMER DETAIL" not in res.text.upper() and "CONSUMER DETAILS" not in res.text.upper():
-        raise RuntimeError("No bill returned for reference number")
+        raise RuntimeError("Bill Not Found")
 
     soup_bill = BeautifulSoup(res.text, "lxml")
     result = {
@@ -1306,6 +1306,8 @@ class MCOMakerApp(tk.Tk):
             log_frame, bg=INPUT_BG, fg=TEXT_MAIN, font=(MONO_FONT, 9),
             relief="flat", wrap="word", padx=10, pady=8, state="disabled"
         )
+        self.log_text.tag_configure("ok", foreground="#4ec9b0")
+        self.log_text.tag_configure("err", foreground="#f44747")
         self.log_text.pack(side="left", fill="both", expand=True)
 
         scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
@@ -1345,10 +1347,13 @@ class MCOMakerApp(tk.Tk):
         # Load existing cached records if available
         self._check_existing_cache()
 
-    def _log(self, message: str):
+    def _log(self, message: str, tag: str | None = None):
         """Append clean log message."""
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"{message}\n")
+        if tag:
+            self.log_text.insert("end", f"{message}\n", tag)
+        else:
+            self.log_text.insert("end", f"{message}\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
@@ -1480,11 +1485,19 @@ class MCOMakerApp(tk.Tk):
                 if rec.get("sco_no"): bill_data["sco_no"] = rec["sco_no"]
                 
                 cached_list.append(rec)
-                # Clean log line as required
-                self.after(0, lambda i=idx, t=total: self._log(f"{i}/{t} Information from Bill fetched"))
+                self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
             except Exception as e:
-                # Log even on failure
-                self.after(0, lambda i=idx, t=total: self._log(f"{i}/{t} Information from Bill fetched (Offline/Default)"))
+                err_str = str(e).strip()
+                if "not found" in err_str.lower() or "no bill" in err_str.lower():
+                    status_msg = '"Bill Not Found"'
+                elif "timeout" in err_str.lower():
+                    status_msg = '"Connection Timeout"'
+                elif "form" in err_str.lower() or "unavailable" in err_str.lower():
+                    status_msg = '"Portal Unavailable"'
+                else:
+                    status_msg = f'"{err_str}"'
+
+                self.after(0, lambda i=idx, t=total, ac=ac_no, msg=status_msg: self._log(f'{i}/{t}: {ac}  {msg}', tag="err"))
                 cached_list.append(rec)
 
             self.after(0, lambda i=idx: self.progress_bar.configure(value=i))
