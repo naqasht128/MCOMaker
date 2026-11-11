@@ -1,0 +1,33 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Distribution / Packaging
+build/
+dist/
+release-assets/
+redist/
+*.egg-info/
+
+# License & Local AppData
+license.json
+admin_config.json
+*.tmp
+*.log
+
+# Server dependencies
+license_server/node_modules/
+license_server/.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
