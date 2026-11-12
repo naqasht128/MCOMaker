@@ -32,6 +32,7 @@ admin_config.json
 # Server dependencies
 license_server/node_modules/
 license_server/.env
+import.env
 .env.local
 
 # IDE
