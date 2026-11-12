@@ -1601,20 +1601,16 @@ class MCOMakerApp(tk.Tk):
             self.records = records
             self.col_map = col_map
             count = len(records)
-            detected = []
-            if "msn" in col_map: detected.append("MSN")
-            if "sim_no" in col_map: detected.append("SIM No")
-            if "sim_id" in col_map: detected.append("SIM ID")
-            if "date" in col_map: detected.append("Date")
-            if "telco" in col_map: detected.append("Telco")
-            if "sco_no" in col_map: detected.append("SCO No")
-
-            self.info_summary_var.set(
-                f"✔ Loaded {count} reference numbers from Column A. Detected columns: {', '.join(detected) if detected else 'Standard'}"
-            )
-            self.info_lbl.configure(fg="#3fb950")
-            # Enable Start Scraping once a valid Excel file is loaded
-            self.btn_start.configure(state="normal", bg=ACCENT_GREEN, fg=TEXT_WHITE, cursor="hand2")
+            ref_str = f"{count} Ref No found" if count == 1 else f"{count} Ref Nos found"
+            if count == 0:
+                self.info_summary_var.set("⚠ Loaded Excel File, 0 Ref Nos found")
+                self.info_lbl.configure(fg=ACCENT_RED)
+                self.btn_start.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
+            else:
+                self.info_summary_var.set(f"✔ Loaded Excel File, {ref_str}")
+                self.info_lbl.configure(fg="#3fb950")
+                # Enable Start Scraping once a valid Excel file is loaded
+                self.btn_start.configure(state="normal", bg=ACCENT_GREEN, fg=TEXT_WHITE, cursor="hand2")
         except Exception as e:
             self.info_summary_var.set(f"Error loading Excel file: {e}")
             self.info_lbl.configure(fg=ACCENT_RED)
