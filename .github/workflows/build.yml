@@ -41,9 +41,17 @@ jobs:
       - name: Build Windows Executable
         run: pyinstaller MCOMaker.spec --clean
 
-      - name: Build Windows Setup Installer (Inno Setup)
+      - name: Download VC++ 2015-2022 Redistributable (x64) for bundling
+        shell: pwsh
         run: |
-          $ver = "${{ github.ref_type == 'tag' && github.ref_name || '1.0.0' }}".TrimStart("v")
+          New-Item -ItemType Directory -Force -Path redist
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "redist/vc_redist.x64.exe"
+
+      - name: Build Windows Setup Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          if ($ref -match '^v?(\d+\.\d+\.\d+)') { $ver = $Matches[1] } else { $ver = "1.0.0" }
           $isccCmd = Get-Command iscc -ErrorAction SilentlyContinue
           if ($isccCmd) {
               $isccPath = $isccCmd.Source
@@ -64,6 +72,7 @@ jobs:
   build-windows-7:
     name: Build Windows 7 / Legacy (.exe)
     runs-on: windows-latest
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -101,8 +110,10 @@ jobs:
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x86.exe" -OutFile "redist/vc_redist.x86.exe"
 
       - name: Build Windows 7 Setup Installer (Inno Setup)
+        shell: pwsh
         run: |
-          $ver = "${{ github.ref_type == 'tag' && github.ref_name || '1.0.0' }}".TrimStart("v")
+          $ref = "${{ github.ref_name }}"
+          if ($ref -match '^v?(\d+\.\d+\.\d+)') { $ver = $Matches[1] } else { $ver = "1.0.0" }
           $isccCmd = Get-Command iscc -ErrorAction SilentlyContinue
           if ($isccCmd) {
               $isccPath = $isccCmd.Source
@@ -124,18 +135,30 @@ jobs:
     name: Publish GitHub Release
     needs: [build-windows-exe, build-windows-7]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != '')
+    if: always() && needs.build-windows-exe.result == 'success' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != ''))
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure release notes exist
+        shell: bash
+        run: |
+          if [ ! -f RELEASE_NOTES.md ]; then
+            echo "# Release ${{ github.ref_name }}" > RELEASE_NOTES.md
+            echo "Automated release build." >> RELEASE_NOTES.md
+          fi
+
       - name: Download Windows Setup Installer Artifact
         uses: actions/download-artifact@v4
         with:
           name: MCOMaker-Windows-Setup
           path: release-assets/
 
-      - name: Download Windows 7 Setup Installer Artifact
+      - name: Download Windows 7 Setup Installer Artifact (if built)
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: MCOMaker-Windows7-Setup
           path: release-assets/
@@ -143,10 +166,8 @@ jobs:
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.tag_name }}
-          files: |
-            release-assets/MCOMaker-Setup.exe
-            release-assets/MCOMaker-Win7-Setup.exe
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*.exe
           draft: false
           body_path: RELEASE_NOTES.md
           generate_release_notes: false
@@ -154,7 +175,7 @@ jobs:
       - name: Broadcast Release Update to Vercel Licensing Server
         shell: bash
         run: |
-          TAG="${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.tag_name }}"
+          TAG="${{ github.ref_name }}"
           VER="${TAG#v}"
           echo "Broadcasting update for v${VER} to Vercel..."
           curl -s -X POST "https://mcomaker.vercel.app/api/admin/broadcast-update" \

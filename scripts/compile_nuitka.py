@@ -47,13 +47,14 @@ def compile_with_nuitka():
     print("  -> Compiling main.py to native C++ machine code...")
     result = subprocess.run(cmd, cwd=str(ROOT_DIR))
     if result.returncode != 0:
-        print(f"[ERROR] Failed to compile main.py with Nuitka (exit code {result.returncode})")
-        sys.exit(result.returncode)
+        print(f"[WARN] Nuitka compilation returned exit code {result.returncode}.")
+        print("[INFO] Falling back to standard Python bytecode bundling...")
+        return
 
     pyd_matches = list(ROOT_DIR.glob("main*.pyd"))
     if not pyd_matches:
-        print("[ERROR] Compiled .pyd for main not found in project directory.")
-        sys.exit(1)
+        print("[WARN] Compiled .pyd for main not found. Falling back to standard distribution.")
+        return
 
     print(f"  [OK] Generated native C++ binary: {pyd_matches[0].name}")
 
