@@ -45,7 +45,9 @@ except ImportError:
 import requests
 from bs4 import BeautifulSoup
 import openpyxl
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 import docx
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
@@ -1393,11 +1395,17 @@ class MCOMakerApp(tk.Tk):
         )
         style.configure(
             "Vertical.TScrollbar",
-            background="#424242",
-            troughcolor="#1e1e1e",
-            bordercolor="#1e1e1e",
-            arrowcolor="#cccccc",
-            relief="flat"
+            background="#252526",
+            troughcolor="#121212",
+            bordercolor="#121212",
+            arrowcolor="#9e9e9e",
+            relief="flat",
+            borderwidth=0
+        )
+        style.map(
+            "Vertical.TScrollbar",
+            background=[("active", "#383838"), ("pressed", "#484848")],
+            arrowcolor=[("active", "#ffffff")]
         )
 
         self.temp_cache_file = get_temp_cache_dir() / "scraped_records.json"
@@ -1611,7 +1619,9 @@ class MCOMakerApp(tk.Tk):
 
         # Clean Log Window
         self.log_frame = tk.Frame(card_scrape, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        self.log_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
+        self.log_frame.pack(fill="both", expand=True, padx=14, pady=(0, 4))
+        self.log_frame.grid_rowconfigure(0, weight=1)
+        self.log_frame.grid_columnconfigure(0, weight=1)
 
         self.log_text = tk.Text(
             self.log_frame, height=6, bg=INPUT_BG, fg=TEXT_MAIN, font=(MONO_FONT, 9),
@@ -1621,11 +1631,45 @@ class MCOMakerApp(tk.Tk):
         self.log_text.tag_configure("green", foreground="#3fb950")
         self.log_text.tag_configure("err", foreground="#f44747")
         self.log_text.tag_configure("blue", foreground="#4daafc")
-        self.log_text.pack(side="left", fill="both", expand=True)
+        self.log_text.grid(row=0, column=0, sticky="nsew")
 
-        scrollbar = ttk.Scrollbar(self.log_frame, command=self.log_text.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.log_text.configure(yscrollcommand=scrollbar.set)
+        self.scrollbar = tk.Scrollbar(
+            self.log_frame,
+            orient="vertical",
+            command=self.log_text.yview,
+            bg="#252526",
+            activebackground="#383838",
+            troughcolor="#121212",
+            highlightthickness=0,
+            bd=0,
+            width=11,
+            relief="flat"
+        )
+
+        def _on_log_scroll(first, last):
+            self.scrollbar.set(first, last)
+            try:
+                f, l = float(first), float(last)
+                if f <= 0.0 and l >= 1.0:
+                    self.scrollbar.grid_remove()
+                else:
+                    if not self.scrollbar.winfo_ismapped():
+                        self.scrollbar.grid(row=0, column=1, sticky="ns")
+            except Exception:
+                pass
+
+        self.log_text.configure(yscrollcommand=_on_log_scroll)
+
+        # Log Bottom Action Bar (Save the Logs button on bottom right corner)
+        log_bottom_row = tk.Frame(card_scrape, bg=CARD_BG)
+        log_bottom_row.pack(fill="x", padx=14, pady=(0, 6))
+
+        self.btn_save_logs = tk.Button(
+            log_bottom_row, text="💾 Save the Logs", font=(UI_FONT, 9), fg=TEXT_MAIN, bg=BTN_SEC_BG,
+            activebackground=BTN_SEC_HOVER, activeforeground=TEXT_WHITE, relief="flat",
+            padx=12, pady=3, cursor="hand2", command=self._save_logs_to_excel
+        )
+        self.btn_save_logs.pack(side="right")
 
         # Load existing cached records if available
         self._check_existing_cache()
@@ -1852,11 +1896,22 @@ class MCOMakerApp(tk.Tk):
                     self._save_cache()
 
                     if bill_data.get("is_defective"):
-                        self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Defective"', tag="blue"))
+                        remarks = "Defective"
+                        log_tag = "blue"
                     elif bill_data.get("is_replaced"):
-                        self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Already replaced in previous month"', tag="err"))
+                        remarks = "Already replaced in previous month"
+                        log_tag = "err"
+                    elif rec.get("remarks"):
+                        remarks = str(rec["remarks"]).strip()
+                        log_tag = "ok"
                     else:
-                        self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
+                        remarks = "Normal"
+                        log_tag = "ok"
+
+                    rec["_log_status"] = "Fetched"
+                    rec["_log_remarks"] = remarks
+
+                    self.after(0, lambda i=idx+1, t=total, ac=ac_no, rem=remarks, tg=log_tag: self._log(f'{i}/{t}: {ac} --- Fetched --- "{rem}"', tag=tg))
 
                     self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
                     time.sleep(0.5)
@@ -1900,11 +1955,22 @@ class MCOMakerApp(tk.Tk):
                                 self.after(0, lambda: self._log("Internet restored! Resuming scraping...", tag="green"))
 
                                 if bill_data.get("is_defective"):
-                                    self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Defective"', tag="blue"))
+                                    remarks = "Defective"
+                                    log_tag = "blue"
                                 elif bill_data.get("is_replaced"):
-                                    self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Already replaced in previous month"', tag="err"))
+                                    remarks = "Already replaced in previous month"
+                                    log_tag = "err"
+                                elif rec.get("remarks"):
+                                    remarks = str(rec["remarks"]).strip()
+                                    log_tag = "ok"
                                 else:
-                                    self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
+                                    remarks = "Normal"
+                                    log_tag = "ok"
+
+                                rec["_log_status"] = "Fetched"
+                                rec["_log_remarks"] = remarks
+
+                                self.after(0, lambda i=idx+1, t=total, ac=ac_no, rem=remarks, tg=log_tag: self._log(f'{i}/{t}: {ac} --- Fetched --- "{rem}"', tag=tg))
 
                                 self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
                                 time.sleep(0.5)
@@ -1922,17 +1988,22 @@ class MCOMakerApp(tk.Tk):
                             break
                     else:
                         err_str = str(e).strip()
-                        if "not found" in err_str.lower() or "no bill" in err_str.lower():
-                            status_msg = '"Bill Not Found"'
+                        err_lower = err_str.lower()
+                        if "not found" in err_lower or "no bill" in err_lower:
+                            err_type = "Bill Not Found"
                             rec["_not_found"] = True
-                        elif "form" in err_str.lower() or "unavailable" in err_str.lower():
-                            status_msg = '"Portal Unavailable"'
+                        elif "unavailable" in err_lower or "form" in err_lower or "website down" in err_lower:
+                            err_type = "Website Down / Portal Unavailable"
+                        elif is_network_error(e) or "network" in err_lower or "timeout" in err_lower or "connection" in err_lower:
+                            err_type = "Network Error / Connection Timeout"
                         else:
-                            status_msg = f'"{err_str}"'
+                            err_type = err_str or "Unknown Error"
 
                         rec["_fetched"] = True
+                        rec["_log_status"] = "Error"
+                        rec["_log_remarks"] = err_type
                         self._save_cache()
-                        self.after(0, lambda i=idx+1, t=total, ac=ac_no, msg=status_msg: self._log(f'{i}/{t}: {ac}  {msg}', tag="err"))
+                        self.after(0, lambda i=idx+1, t=total, ac=ac_no, et=err_type: self._log(f'{i}/{t}: {ac} --- Error --- "{et}"', tag="err"))
                         self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
                         time.sleep(0.5)
                         break
@@ -1957,6 +2028,183 @@ class MCOMakerApp(tk.Tk):
                 self._log(f"Scraping stopped by user. ({fetched_count}/{total_count} bills saved to cache).", tag="err")
             elif fetched_count < total_count:
                 self._log(f"Scraping incomplete ({fetched_count}/{total_count} bills). Click 'Start Scraping' to resume.", tag="err")
+
+    # ====================================================================
+    # EXPORT SCRAPING LOGS TO EXCEL
+    # ====================================================================
+    def _save_logs_to_excel(self):
+        if not self.records:
+            messagebox.showwarning(
+                "No Logs Available",
+                "There are no scraping logs or records to save.\nPlease load an Excel file and scrape first."
+            )
+            return
+
+        default_filename = f"MCO_Scraping_Logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        save_path = filedialog.asksaveasfilename(
+            title="Save Scraping Logs to Excel",
+            initialfile=default_filename,
+            filetypes=[("Excel Workbook", "*.xlsx"), ("All Files", "*.*")],
+            defaultextension=".xlsx"
+        )
+        if not save_path:
+            return
+
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Scraping Logs"
+            ws.views.sheetView[0].showGridLines = True
+
+            headers = [
+                "Sr #",
+                "Reference No",
+                "Scraping Status",
+                "Remarks",
+                "Consumer Name",
+                "Address",
+                "Tariff",
+                "Sub Division",
+                "Bill Status",
+                "Meter Range",
+                "Present Reading",
+                "Previous Reading",
+                "Units",
+                "Installed MSN",
+                "SIM No",
+                "SIM ID",
+                "Installation Date",
+                "Telco",
+                "SCO / MCO No"
+            ]
+            ws.append(headers)
+
+            header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+            header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+            header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+            thin_border = Border(
+                left=Side(style="thin", color="D9D9D9"),
+                right=Side(style="thin", color="D9D9D9"),
+                top=Side(style="thin", color="D9D9D9"),
+                bottom=Side(style="thin", color="D9D9D9")
+            )
+
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=1, column=col_idx)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = header_align
+                cell.border = thin_border
+            ws.row_dimensions[1].height = 26
+
+            data_font = Font(name="Calibri", size=10)
+            center_align = Alignment(horizontal="center", vertical="center")
+            left_align = Alignment(horizontal="left", vertical="center")
+
+            status_fetched_font = Font(name="Calibri", size=10, bold=True, color="008000")
+            status_error_font = Font(name="Calibri", size=10, bold=True, color="C00000")
+            status_defective_font = Font(name="Calibri", size=10, bold=True, color="0066CC")
+
+            for idx, rec in enumerate(self.records, 1):
+                ac_no = str(rec.get("reference", "")).strip()
+
+                status_str = rec.get("_log_status")
+                remarks_str = rec.get("_log_remarks")
+                if not status_str or not remarks_str:
+                    if rec.get("_not_found"):
+                        status_str = "Error"
+                        remarks_str = "Bill Not Found"
+                    elif rec.get("is_defective"):
+                        status_str = "Fetched"
+                        remarks_str = "Defective"
+                    elif rec.get("is_replaced"):
+                        status_str = "Fetched"
+                        remarks_str = "Already replaced in previous month"
+                    elif self._is_record_fetched(rec):
+                        status_str = "Fetched"
+                        remarks_str = rec.get("remarks") or "Normal"
+                    else:
+                        status_str = "Pending"
+                        remarks_str = "Not yet scraped"
+
+                row_values = [
+                    idx,
+                    ac_no,
+                    status_str,
+                    remarks_str,
+                    rec.get("name", ""),
+                    rec.get("address", ""),
+                    rec.get("tariff", ""),
+                    rec.get("sub_division", ""),
+                    rec.get("status", ""),
+                    5,
+                    rec.get("present_reading", ""),
+                    rec.get("prev_reading", ""),
+                    rec.get("units", ""),
+                    rec.get("msn", ""),
+                    rec.get("sim_no", ""),
+                    rec.get("sim_id", ""),
+                    rec.get("date", ""),
+                    rec.get("telco", ""),
+                    rec.get("sco_no", "")
+                ]
+                ws.append(row_values)
+                row_idx = idx + 1
+                ws.row_dimensions[row_idx].height = 20
+
+                for col_idx in range(1, len(row_values) + 1):
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    cell.font = data_font
+                    cell.border = thin_border
+
+                    if col_idx in (1, 3, 10, 11, 12, 13, 17):
+                        cell.alignment = center_align
+                    elif col_idx in (2, 14, 15, 16):
+                        cell.number_format = "@"
+                        cell.alignment = center_align
+                    else:
+                        cell.alignment = left_align
+
+                    if col_idx == 3:
+                        if status_str == "Fetched":
+                            cell.font = status_fetched_font
+                        elif status_str == "Error":
+                            cell.font = status_error_font
+                    elif col_idx == 4:
+                        if remarks_str == "Defective":
+                            cell.font = status_defective_font
+                        elif "replaced" in str(remarks_str).lower() or status_str == "Error":
+                            cell.font = status_error_font
+
+            for col in ws.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    val_str = str(cell.value or "")
+                    if len(val_str) > max_len:
+                        max_len = len(val_str)
+                ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+            ws.freeze_panes = "A2"
+            ws.auto_filter.ref = ws.dimensions
+
+            wb.save(save_path)
+
+            res = messagebox.askyesno(
+                "Logs Saved",
+                f"Scraping logs successfully saved to Excel!\n\nFile: {save_path}\n\nWould you like to open the file now?"
+            )
+            if res:
+                if sys.platform == "win32":
+                    os.startfile(save_path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", save_path])
+                else:
+                    subprocess.Popen(["xdg-open", save_path])
+
+        except Exception as e:
+            messagebox.showerror("Save Error", f"Failed to save logs to Excel:\n\n{e}")
 
     # ====================================================================
     # MAKE MCO GENERATION (MS WORD)
