@@ -529,7 +529,7 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
 
     # Connections with defective status (e.g. "Def-Est") and no reading
     if is_defective and not result["present_reading"]:
-        result["present_reading"] = "Defective"
+        result["present_reading"] = "Def-Est"
 
     return result
 
@@ -723,8 +723,9 @@ class MCODocumentGenerator:
             # Row 5 (Removed Meter)
             if len(t_meter.rows) > 5:
                 r5 = t_meter.rows[5].cells
-                old_m = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
-                read = "Defective" if (rec.get("is_defective") or not rec.get("present_reading") and "def" in str(rec.get("status", "")).lower()) else str(rec.get("present_reading", ""))
+                old_m = str(rec.get("meter_no") or rec.get("old_meter_no") or "")
+                is_def = rec.get("is_defective") or str(rec.get("present_reading", "")).strip().lower() in ["defective", "def-est"] or "def" in str(rec.get("status", "")).lower()
+                read = "Def-Est" if is_def else str(rec.get("present_reading", ""))
                 if r5[0].paragraphs[0].runs:
                     r5[0].paragraphs[0].runs[0].text = old_m
                 else:
@@ -734,6 +735,8 @@ class MCODocumentGenerator:
                 for ci, val in [(5, "S/P"), (6, "1"), (7, read), (8, "5")]:
                     if r5[ci].paragraphs[0].runs:
                         r5[ci].paragraphs[0].runs[0].text = val
+                        if ci == 7 and val == "Def-Est":
+                            r5[ci].paragraphs[0].runs[0].font.size = Pt(9.0)
                     else:
                         r5[ci].text = val
 
@@ -824,10 +827,11 @@ class MCODocumentGenerator:
         if len(doc.tables) >= 4:
             t3 = doc.tables[3]
             r_rem = t3.rows[2].cells
-            old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
-            reading = "Defective" if (rec.get("is_defective") or not rec.get("present_reading") and "def" in str(rec.get("status", "")).lower()) else str(rec.get("present_reading") or "")
+            old_meter = str(rec.get("meter_no") or rec.get("old_meter_no") or "")
+            is_def = rec.get("is_defective") or str(rec.get("present_reading", "")).strip().lower() in ["defective", "def-est"] or "def" in str(rec.get("status", "")).lower()
+            reading = "Def-Est" if is_def else str(rec.get("present_reading") or "")
             _set_cell_text(r_rem[3], old_meter, bold=True, center=True, font_size_pt=11.0)
-            _set_cell_text(r_rem[4], reading, bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_rem[4], reading, bold=True, center=True, font_size_pt=10.0 if is_def else 11.0)
             r_rem[5].text = ""  # Advance Units blank
             r_rem[6].text = ""  # Round Comp Code blank
             r_rem[7].text = ""  # Multiplying Factor blank
