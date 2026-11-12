@@ -444,29 +444,31 @@ class MCODocumentGenerator:
     @classmethod
     def generate_sub_division_docx(cls, template_path: str, out_path: str, records: list[dict]):
         base_doc = docx.Document(template_path)
-        
-        # If single record, fill directly in base_doc
-        if len(records) == 1:
-            cls._populate_sub_division_doc(base_doc, records[0])
-            base_doc.save(out_path)
-            return
-
-        # For multiple records: Create new combined document with identical structure
-        # Fill first record into base_doc, then clone for subsequent records
         cls._populate_sub_division_doc(base_doc, records[0])
-        sectPr = base_doc.element.body.find(docx.oxml.ns.qn('w:sectPr'))
-        for rec in records[1:]:
-            base_doc.add_page_break()
-            # Append filled template content
-            temp_doc = docx.Document(template_path)
-            cls._populate_sub_division_doc(temp_doc, rec)
-            for el in temp_doc.element.body:
-                if el.tag.endswith('sectPr'):
-                    continue
-                if sectPr is not None:
-                    sectPr.addprevious(el)
-                else:
-                    base_doc.element.body.append(el)
+        while len(base_doc.paragraphs) > 0 and not base_doc.paragraphs[-1].text.strip():
+            p = base_doc.paragraphs[-1]._p
+            p.getparent().remove(p)
+
+        if len(records) > 1:
+            sectPr = base_doc.element.body.find(docx.oxml.ns.qn('w:sectPr'))
+            for rec in records[1:]:
+                temp_doc = docx.Document(template_path)
+                cls._populate_sub_division_doc(temp_doc, rec)
+                while len(temp_doc.paragraphs) > 0 and not temp_doc.paragraphs[-1].text.strip():
+                    p = temp_doc.paragraphs[-1]._p
+                    p.getparent().remove(p)
+
+                # Set page break before on first paragraph of subsequent record
+                if temp_doc.paragraphs:
+                    temp_doc.paragraphs[0].paragraph_format.page_break_before = True
+
+                for el in temp_doc.element.body:
+                    if el.tag.endswith('sectPr'):
+                        continue
+                    if sectPr is not None:
+                        sectPr.addprevious(el)
+                    else:
+                        base_doc.element.body.append(el)
 
         base_doc.save(out_path)
 
@@ -480,8 +482,11 @@ class MCODocumentGenerator:
             txt = p.text
             if "Book No:" in txt:
                 if len(p.runs) > 1:
+                    p.runs[0].underline = False
                     p.runs[1].text = f" {rec.get('sco_no', '')}"
+                    p.runs[1].underline = True
                 else:
+                    p.runs[0].underline = False
                     p.text = f"Book No: {rec.get('sco_no', '')}"
             elif "Office:" in txt:
                 if len(p.runs) > 3:
@@ -580,24 +585,31 @@ class MCODocumentGenerator:
     @classmethod
     def generate_ro_mco_docx(cls, template_path: str, out_path: str, records: list[dict]):
         base_doc = docx.Document(template_path)
-        if len(records) == 1:
-            cls._populate_ro_mco_doc(base_doc, records[0])
-            base_doc.save(out_path)
-            return
-
         cls._populate_ro_mco_doc(base_doc, records[0])
-        sectPr = base_doc.element.body.find(docx.oxml.ns.qn('w:sectPr'))
-        for rec in records[1:]:
-            base_doc.add_page_break()
-            temp_doc = docx.Document(template_path)
-            cls._populate_ro_mco_doc(temp_doc, rec)
-            for el in temp_doc.element.body:
-                if el.tag.endswith('sectPr'):
-                    continue
-                if sectPr is not None:
-                    sectPr.addprevious(el)
-                else:
-                    base_doc.element.body.append(el)
+        while len(base_doc.paragraphs) > 0 and not base_doc.paragraphs[-1].text.strip():
+            p = base_doc.paragraphs[-1]._p
+            p.getparent().remove(p)
+
+        if len(records) > 1:
+            sectPr = base_doc.element.body.find(docx.oxml.ns.qn('w:sectPr'))
+            for rec in records[1:]:
+                temp_doc = docx.Document(template_path)
+                cls._populate_ro_mco_doc(temp_doc, rec)
+                while len(temp_doc.paragraphs) > 0 and not temp_doc.paragraphs[-1].text.strip():
+                    p = temp_doc.paragraphs[-1]._p
+                    p.getparent().remove(p)
+
+                # Set page break before on first cell of Table 0 to break clean to next page
+                if temp_doc.tables and temp_doc.tables[0].rows and temp_doc.tables[0].rows[0].cells:
+                    temp_doc.tables[0].rows[0].cells[0].paragraphs[0].paragraph_format.page_break_before = True
+
+                for el in temp_doc.element.body:
+                    if el.tag.endswith('sectPr'):
+                        continue
+                    if sectPr is not None:
+                        sectPr.addprevious(el)
+                    else:
+                        base_doc.element.body.append(el)
 
         base_doc.save(out_path)
 
@@ -632,7 +644,7 @@ class MCODocumentGenerator:
         # Table 2: Reference Number & MCO details
         # a) Type section blank, TRF blank
         # c) Old and new blank
-        # d) Font size 11pt, bold
+        # d) Font size 11pt, bold (Number, Issue Date, Execution Date size 10)
         # e) Centered
         if len(doc.tables) >= 3:
             t2 = doc.tables[2]
@@ -642,9 +654,9 @@ class MCODocumentGenerator:
             _set_cell_text(r2[2], ac_num, bold=True, center=True, font_size_pt=11.0)
             r2[3].text = ""  # Type blank
             r2[4].text = ""  # TRF blank
-            _set_cell_text(r2[5], rec.get("sco_no", ""), bold=True, center=True, font_size_pt=11.0)
-            _set_cell_text(r2[6], rec.get("date", ""), bold=True, center=True, font_size_pt=11.0)
-            _set_cell_text(r2[7], rec.get("date", ""), bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r2[5], rec.get("sco_no", ""), bold=True, center=True, font_size_pt=10.0)
+            _set_cell_text(r2[6], rec.get("date", ""), bold=True, center=True, font_size_pt=10.0)
+            _set_cell_text(r2[7], rec.get("date", ""), bold=True, center=True, font_size_pt=10.0)
             r2[8].text = ""  # Old blank
             r2[9].text = ""  # New blank
 
@@ -695,7 +707,58 @@ class MCODocumentGenerator:
                 p.text = "Authority: SDO (E) PESCO"
 
     @classmethod
-    def generate_sub_division_pdf(cls, out_path: str, records: list[dict]):
+    def convert_docx_to_pdf(cls, docx_path: str, pdf_path: str) -> bool:
+        """Converts DOCX to PDF using Word COM automation or docx2pdf for 100% ditto copy."""
+        abs_docx = os.path.abspath(docx_path)
+        abs_pdf = os.path.abspath(pdf_path)
+
+        # 1. Try direct Word COM automation
+        try:
+            import win32com.client
+            word = win32com.client.DispatchEx("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = False
+            try:
+                doc = word.Documents.Open(abs_docx, ReadOnly=True)
+                doc.SaveAs(abs_pdf, FileFormat=17)  # 17 = wdFormatPDF
+                doc.Close(False)
+                return True
+            finally:
+                word.Quit()
+        except Exception as e:
+            logger.warning(f"Word COM automation failed: {e}")
+
+        # 2. Try docx2pdf library
+        try:
+            from docx2pdf import convert
+            convert(abs_docx, abs_pdf)
+            return True
+        except Exception as e:
+            logger.warning(f"docx2pdf conversion failed: {e}")
+
+        return False
+
+    @classmethod
+    def generate_sub_division_pdf(cls, out_path: str, records: list[dict], template_path: str = None):
+        if not template_path:
+            template_path = resource_path("templates/sub_division_mco_template.docx")
+
+        # 1. Direct Word conversion (ditto copy of MS Word)
+        temp_docx = out_path + ".temp.docx"
+        try:
+            cls.generate_sub_division_docx(template_path, temp_docx, records)
+            if cls.convert_docx_to_pdf(temp_docx, out_path):
+                return
+        except Exception as e:
+            logger.warning(f"Direct Word conversion for Sub Division failed: {e}")
+        finally:
+            if os.path.exists(temp_docx):
+                try:
+                    os.remove(temp_docx)
+                except Exception:
+                    pass
+
+        # 2. Pure ReportLab fallback (uncolored, plain styling matching MS Word)
         doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=30, bottomMargin=30)
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, alignment=1, spaceAfter=2)
@@ -713,8 +776,8 @@ class MCODocumentGenerator:
             formatted_ac = cls.format_account_no(rec.get("reference", ""))
             sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
 
-            # Book No: Right aligned
-            story.append(Paragraph(f"<b>Book No:</b> <u>&nbsp;<b>{rec.get('sco_no', '___________')}</b>&nbsp;</u>", ParagraphStyle('BookNoR', parent=label_style, alignment=2, fontSize=11)))
+            # Book No: Right aligned (no underline on label)
+            story.append(Paragraph(f"Book No: <u>&nbsp;<b>{rec.get('sco_no', '___________')}</b>&nbsp;</u>", ParagraphStyle('BookNoR', parent=label_style, alignment=2, fontSize=11)))
             story.append(Spacer(1, 2))
             story.append(Paragraph("WATER & POWER DEVELOPMENT AUTHORITY", title_style))
             story.append(Paragraph("POWER WING", sub_title_style))
@@ -782,8 +845,6 @@ class MCODocumentGenerator:
             mt.setStyle(TableStyle([
                 ('SPAN', (0, 0), (8, 0)),
                 ('SPAN', (0, 3), (8, 3)),
-                ('BACKGROUND', (0, 0), (8, 0), colors.HexColor('#f0f0f0')),
-                ('BACKGROUND', (0, 3), (8, 3), colors.HexColor('#f0f0f0')),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -810,12 +871,31 @@ class MCODocumentGenerator:
             ]
             story.append(Table(sig_data, colWidths=[260, 260]))
             story.append(Spacer(1, 8))
-            story.append(Paragraph("<b>CHARGE:</b> (In accordance with item 2 of the schedule of general charges, If the meter has been removed or had its Position changed at the request of the consumer the consumer shall be charged at the rate applicable of the time of changed).", ParagraphStyle('Charge', parent=styles['Normal'], fontSize=7, textColor=colors.dimgrey)))
+            story.append(Paragraph("<b>CHARGE:</b> (In accordance with item 2 of the schedule of general charges, If the meter has been removed or had its Position changed at the request of the consumer the consumer shall be charged at the rate applicable of the time of changed).", ParagraphStyle('Charge', parent=styles['Normal'], fontSize=7, textColor=colors.black)))
 
         doc.build(story)
 
     @classmethod
-    def generate_ro_mco_pdf(cls, out_path: str, records: list[dict]):
+    def generate_ro_mco_pdf(cls, out_path: str, records: list[dict], template_path: str = None):
+        if not template_path:
+            template_path = resource_path("templates/ro_mco_template.docx")
+
+        # 1. Direct Word conversion (ditto copy of MS Word)
+        temp_docx = out_path + ".temp.docx"
+        try:
+            cls.generate_ro_mco_docx(template_path, temp_docx, records)
+            if cls.convert_docx_to_pdf(temp_docx, out_path):
+                return
+        except Exception as e:
+            logger.warning(f"Direct Word conversion for RO MCO failed: {e}")
+        finally:
+            if os.path.exists(temp_docx):
+                try:
+                    os.remove(temp_docx)
+                except Exception:
+                    pass
+
+        # 2. Pure ReportLab fallback (uncolored, plain styling matching MS Word)
         doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=28, leftMargin=28, topMargin=28, bottomMargin=28)
         styles = getSampleStyleSheet()
         small_header = ParagraphStyle('SmallHeader', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9)
@@ -897,7 +977,6 @@ class MCODocumentGenerator:
                 ('SPAN', (0, 0), (2, 0)),
                 ('SPAN', (3, 0), (7, 0)),
                 ('SPAN', (8, 0), (9, 0)),
-                ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#f5f5f5')),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -932,7 +1011,6 @@ class MCODocumentGenerator:
             ]
             rmt = Table(rem_table, colWidths=[45, 45, 45, 85, 65, 60, 75, 60, 60])
             rmt.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f5f5f5')),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -971,7 +1049,6 @@ class MCODocumentGenerator:
             imt.setStyle(TableStyle([
                 ('SPAN', (0, 4), (4, 4)),
                 ('SPAN', (7, 4), (9, 4)),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f5f5f5')),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -1738,17 +1815,17 @@ class MCOMakerApp(tk.Tk):
 
         try:
             if mco_type == "sub_division":
+                tmpl = resource_path("templates/sub_division_mco_template.docx")
                 if fmt == "docx":
-                    tmpl = resource_path("templates/sub_division_mco_template.docx")
                     MCODocumentGenerator.generate_sub_division_docx(tmpl, save_path, self.records)
                 else:
-                    MCODocumentGenerator.generate_sub_division_pdf(save_path, self.records)
+                    MCODocumentGenerator.generate_sub_division_pdf(save_path, self.records, template_path=tmpl)
             else:
+                tmpl = resource_path("templates/ro_mco_template.docx")
                 if fmt == "docx":
-                    tmpl = resource_path("templates/ro_mco_template.docx")
                     MCODocumentGenerator.generate_ro_mco_docx(tmpl, save_path, self.records)
                 else:
-                    MCODocumentGenerator.generate_ro_mco_pdf(save_path, self.records)
+                    MCODocumentGenerator.generate_ro_mco_pdf(save_path, self.records, template_path=tmpl)
 
             res = messagebox.askyesno(
                 "MCO Generated",
