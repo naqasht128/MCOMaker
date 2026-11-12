@@ -657,9 +657,11 @@ class MCODocumentGenerator:
             _set_cell_text(r2[2], ac_num, bold=True, center=True, font_size_pt=11.0)
             r2[3].text = ""  # Type blank
             r2[4].text = ""  # TRF blank
-            _set_cell_text(r2[5], rec.get("sco_no", ""), bold=True, center=True, font_size_pt=10.0)
-            _set_cell_text(r2[6], rec.get("date", ""), bold=True, center=True, font_size_pt=10.0)
-            _set_cell_text(r2[7], rec.get("date", ""), bold=True, center=True, font_size_pt=10.0)
+            sco_no_val = str(rec.get("sco_no") or rec.get("mco_number") or "")
+            date_val = str(rec.get("date") or rec.get("issue_date") or "")
+            _set_cell_text(r2[5], sco_no_val, bold=True, center=True, font_size_pt=10.0)
+            _set_cell_text(r2[6], date_val, bold=True, center=True, font_size_pt=10.0)
+            _set_cell_text(r2[7], date_val, bold=True, center=True, font_size_pt=10.0)
             r2[8].text = ""  # Old blank
             r2[9].text = ""  # New blank
 
@@ -804,7 +806,7 @@ class MCODocumentGenerator:
             story.append(Paragraph("POWER WING", sub_title_style))
             story.append(Spacer(1, 2))
 
-            story.append(Paragraph(f"Office: ______________________________<b><u>SDO (E) PESCO {sub_div_name}</u></b>____________________________________________", label_style))
+            story.append(Paragraph(f"Office: ____________________<b><u>SDO (E) PESCO {sub_div_name}</u></b>____________________", label_style))
             story.append(Spacer(1, 4))
             story.append(Paragraph("<b>METER CHANGE ORDER</b>", ParagraphStyle('MCO', parent=title_style, fontSize=11, spaceAfter=2)))
             story.append(Paragraph(f"Date: <u>&nbsp;<b>{rec.get('date', '__________')}</b>&nbsp;</u>", ParagraphStyle('DateR', parent=label_style, alignment=2)))
@@ -816,7 +818,21 @@ class MCODocumentGenerator:
             story.append(Spacer(1, 3))
             story.append(Paragraph(f"Feeder No: _____________<b><u>{rec.get('feeder', '')}</u></b>___________________________________________________________", label_style))
             story.append(Spacer(1, 3))
-            story.append(Paragraph(f"Reason For Change: ____________<b><u>Replacement</u></b>____________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Sim No: <b><u>{rec.get('sim_no', '')}</u></b> &nbsp;&nbsp; Sim ID: <b><u>{rec.get('sim_id', '')}</u></b> &nbsp;&nbsp; Telco: <b><u>{rec.get('telco', '')}</u></b>", label_style))
+            reason_sim_data = [
+                [
+                    Paragraph(f"Reason For Change: ____________<b><u>Replacement</u></b>________________________________________", label_style),
+                    Paragraph(f"Sim No: <b><u>{rec.get('sim_no', '')}</u></b> &nbsp;&nbsp; Sim ID: <b><u>{rec.get('sim_id', '')}</u></b> &nbsp;&nbsp; Telco: <b><u>{rec.get('telco', '')}</u></b>", ParagraphStyle('SimR', parent=label_style, alignment=2))
+                ]
+            ]
+            t_rs = Table(reason_sim_data, colWidths=[250, 270])
+            t_rs.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 1),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            ]))
+            story.append(t_rs)
             story.append(Spacer(1, 5))
 
             to_data = [
@@ -825,7 +841,15 @@ class MCODocumentGenerator:
                     Paragraph(f"Account No: &nbsp;&nbsp;&nbsp;&nbsp;<b><u>{formatted_ac}</u></b>", ParagraphStyle('AcR', parent=label_style, alignment=2, fontSize=11))
                 ]
             ]
-            story.append(Table(to_data, colWidths=[260, 260]))
+            t_to = Table(to_data, colWidths=[260, 260])
+            t_to.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 1),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            ]))
+            story.append(t_to)
             story.append(Spacer(1, 3))
             story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;Please change meter on premises of above consumer and report below", label_style))
             story.append(Spacer(1, 3))
@@ -965,9 +989,11 @@ class MCODocumentGenerator:
             ]
             tt = Table(trans_table, colWidths=[150, 150, 240])
             tt.setStyle(TableStyle([
-                ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 1),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
             ]))
             story.append(tt)
             story.append(Spacer(1, 6))
@@ -976,6 +1002,8 @@ class MCODocumentGenerator:
             # c) Old and new blank
             # d) bold entries
             # e) centered entries
+            sco_no_val = str(rec.get("sco_no") or rec.get("mco_number") or "")
+            date_val = str(rec.get("date") or rec.get("issue_date") or "")
             ref_table = [
                 [
                     Paragraph("<b>Reference Number</b>", cell_sb), "", "",
@@ -989,11 +1017,11 @@ class MCODocumentGenerator:
                 ],
                 [
                     Paragraph(f"<b>{batch_no}</b>", cell_sb), Paragraph(f"<b>{sub_div}</b>", cell_sb), Paragraph(f"<b>{ac_num}</b>", cell_sb),
-                    Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph(f"<b>{rec.get('sco_no', '')}</b>", cell_sb),
-                    Paragraph(f"<b>{rec.get('date', '')}</b>", cell_sb), Paragraph(f"<b>{rec.get('date', '')}</b>", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb),
+                    Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph(f"<b>{sco_no_val}</b>", cell_sb),
+                    Paragraph(f"<b>{date_val}</b>", cell_sb), Paragraph(f"<b>{date_val}</b>", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb),
                 ]
             ]
-            rt = Table(ref_table, colWidths=[45, 55, 65, 40, 50, 60, 65, 65, 45, 50])
+            rt = Table(ref_table, colWidths=[38, 52, 60, 25, 25, 95, 75, 75, 25, 25])
             rt.setStyle(TableStyle([
                 ('SPAN', (0, 0), (2, 0)),
                 ('SPAN', (3, 0), (7, 0)),
@@ -1001,6 +1029,10 @@ class MCODocumentGenerator:
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 1),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ]))
             story.append(rt)
             story.append(Spacer(1, 6))
@@ -1098,10 +1130,12 @@ class MCODocumentGenerator:
             ]
             st = Table(sig_table, colWidths=[270, 270])
             st.setStyle(TableStyle([
-                ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
                 ('SPAN', (0, 1), (1, 1)),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ]))
             story.append(st)
 
