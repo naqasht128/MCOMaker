@@ -89,31 +89,91 @@ def resource_path(relative_path: str) -> str:
 
 
 def set_dark_title_bar(window: tk.Tk | tk.Toplevel):
-    """Enables Windows 10/11 native immersive dark mode title bar."""
+    """Enables Windows 10/11 native immersive dark mode title bar without glitching."""
     if sys.platform != "win32":
         return
     try:
         import ctypes
         window.update_idletasks()
-        hwnds = []
         try:
-            hwnds.append(int(window.wm_frame(), 16))
+            top_h = ctypes.windll.user32.GetAncestor(window.winfo_id(), 2)  # GA_ROOT
         except Exception:
-            pass
-        try:
-            parent_h = ctypes.windll.user32.GetParent(window.winfo_id())
-            if parent_h:
-                hwnds.append(parent_h)
-        except Exception:
-            pass
-        hwnds.append(window.winfo_id())
+            top_h = 0
+        if not top_h:
+            try:
+                top_h = int(window.wm_frame(), 16)
+            except Exception:
+                top_h = window.winfo_id()
+
+        if not top_h:
+            return
 
         value = ctypes.c_int(1)
-        for h in set(hwnds):
-            if h:
-                # DWMWA_USE_IMMERSIVE_DARK_MODE: 20 for Win 11 & Win 10 (20H1+), 19 for older Win 10
-                if ctypes.windll.dwmapi.DwmSetWindowAttribute(h, 20, ctypes.byref(value), ctypes.sizeof(value)) != 0:
-                    ctypes.windll.dwmapi.DwmSetWindowAttribute(h, 19, ctypes.byref(value), ctypes.sizeof(value))
+        # DWMWA_USE_IMMERSIVE_DARK_MODE: 20 for Win 11 & Win 10 (20H1+), 19 for older Win 10
+        if ctypes.windll.dwmapi.DwmSetWindowAttribute(top_h, 20, ctypes.byref(value), ctypes.sizeof(value)) != 0:
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(top_h, 19, ctypes.byref(value), ctypes.sizeof(value))
+
+        # Windows 11 caption color (#1e1e1e) and text color (white)
+        caption_col = ctypes.c_int(0x001e1e1e)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(top_h, 35, ctypes.byref(caption_col), ctypes.sizeof(caption_col))
+        text_col = ctypes.c_int(0x00ffffff)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(top_h, 36, ctypes.byref(text_col), ctypes.sizeof(text_col))
+
+        # Crucial for Windows 10: Force non-client frame recalculation & immediate repaint
+        # SWP_NOSIZE(0x0001) | SWP_NOMOVE(0x0002) | SWP_NOZORDER(0x0004) | SWP_NOACTIVATE(0x0010) | SWP_FRAMECHANGED(0x0020)
+        SWP_FLAGS = 0x0037
+        ctypes.windll.user32.SetWindowPos(top_h, 0, 0, 0, 0, 0, SWP_FLAGS)
+
+        # Toggle non-client activation to force title bar brush refresh (fixes Win 10 white box glitch)
+        WM_NCACTIVATE = 0x0086
+        ctypes.windll.user32.SendMessageW(top_h, WM_NCACTIVATE, 0, 0)
+        ctypes.windll.user32.SendMessageW(top_h, WM_NCACTIVATE, 1, 0)
+
+        # Invalidate and redraw the window frame immediately
+        RDW_FLAGS = 0x0400 | 0x0001 | 0x0100  # RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW
+        ctypes.windll.user32.RedrawWindow(top_h, None, None, RDW_FLAGS)
+    except Exception:
+        pass
+
+
+def remove_title_bar_icon(window: tk.Tk | tk.Toplevel):
+    """Removes the window title bar icon (e.g. default Tk feather) for a clean modal dialog look."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        window.update_idletasks()
+        try:
+            top_h = ctypes.windll.user32.GetAncestor(window.winfo_id(), 2)  # GA_ROOT
+        except Exception:
+            top_h = 0
+        if not top_h:
+            try:
+                top_h = int(window.wm_frame(), 16)
+            except Exception:
+                top_h = window.winfo_id()
+
+        if not top_h:
+            return
+
+        GWL_EXSTYLE = -20
+        WS_EX_DLGMODALFRAME = 0x0001
+        cur_style = ctypes.windll.user32.GetWindowLongW(top_h, GWL_EXSTYLE)
+        ctypes.windll.user32.SetWindowLongW(top_h, GWL_EXSTYLE, cur_style | WS_EX_DLGMODALFRAME)
+
+        # Create a 16x16 100% transparent icon to override Tkinter's feather class icon
+        and_mask = (ctypes.c_ubyte * 32)(*([0xFF] * 32))
+        xor_mask = (ctypes.c_ubyte * 32)(*([0x00] * 32))
+        h_icon = ctypes.windll.user32.CreateIcon(0, 16, 16, 1, 1, and_mask, xor_mask)
+
+        # Set transparent icon for both small (title bar) and large (alt-tab)
+        WM_SETICON = 0x0080
+        ctypes.windll.user32.SendMessageW(top_h, WM_SETICON, 0, h_icon)
+        ctypes.windll.user32.SendMessageW(top_h, WM_SETICON, 1, h_icon)
+
+        # Notify frame to redraw without icon
+        SWP_FLAGS = 0x0037
+        ctypes.windll.user32.SetWindowPos(top_h, 0, 0, 0, 0, 0, SWP_FLAGS)
     except Exception:
         pass
 
@@ -345,8 +405,14 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
         "feeder": "",
         "sub_division": "",
         "tariff": "",
+        "status": "",
+        "is_replaced": False,
+        "is_defective": False,
         "meter_no": "",
         "present_reading": "",
+        "previous_reading": "",
+        "old_meter_no": "",
+        "old_present_reading": "",
     }
 
     # Grid cells
@@ -366,6 +432,32 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
                 result["sub_division"] = val
             elif "tariff" in lbl_lower and "category" not in lbl_lower:
                 result["tariff"] = val
+            elif "status" in lbl_lower:
+                result["status"] = val
+
+    # Fallback for status & name/address
+    if not result["status"]:
+        for tr in soup_bill.select("tr"):
+            txt = clean_text(tr.get_text(" ")).lower()
+            if "status" in txt:
+                tds = tr.select("td, th")
+                if len(tds) >= 2:
+                    result["status"] = clean_text(tds[-1].get_text(" "))
+
+    # Check if meter status is replaced
+    is_replaced = bool(re.search(r"replace", result["status"], re.IGNORECASE))
+    if not is_replaced:
+        consumer_section = soup_bill.select_one(".consumer-detail-grid") or soup_bill
+        if re.search(r"\b(already\s+replaced|replaced)\b", consumer_section.get_text(" "), re.IGNORECASE):
+            is_replaced = True
+            if not result["status"]:
+                result["status"] = "Replaced"
+
+    result["is_replaced"] = is_replaced
+
+    # Check if meter status is defective (e.g. "Def-Est", "Defective")
+    is_defective = bool(re.search(r"\bdef\b|def-est|defective", result["status"], re.IGNORECASE))
+    result["is_defective"] = is_defective
 
     # Fallback for name & address
     if not result["name_address"]:
@@ -397,13 +489,26 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
             lines = [clean_text(s) for s in val_el.stripped_strings if clean_text(s)]
             lbl_upper = lbl.upper()
 
+            # When status is "Replaced" and there are 2 lines:
+            # 1st line is OLD meter, 2nd line is NEW meter. Fetch 2nd line's data!
+            use_second_line = is_replaced and len(lines) >= 2
+
             if "METER NO" in lbl_upper or "METER NUMBER" in lbl_upper:
-                # Removed meter number (first line or prior to replaced meter)
-                m_no = lines[0] if lines else ""
-                m_no_clean = re.sub(r"^[A-Z0-9\s\-]+(?=\b\d{4,}\b)", "", m_no).strip()
-                result["meter_no"] = m_no_clean if m_no_clean else m_no
+                target_m = lines[1] if use_second_line else (lines[0] if lines else "")
+                m_no_clean = re.sub(r"^[A-Z0-9\s\-]+(?=\b\d{4,}\b)", "", target_m).strip()
+                result["meter_no"] = m_no_clean if m_no_clean else target_m
+                if len(lines) >= 2:
+                    old_m = lines[0]
+                    old_clean = re.sub(r"^[A-Z0-9\s\-]+(?=\b\d{4,}\b)", "", old_m).strip()
+                    result["old_meter_no"] = old_clean if old_clean else old_m
             elif "PRESENT READING" in lbl_upper:
-                result["present_reading"] = lines[0] if lines else ""
+                result["present_reading"] = lines[1] if use_second_line else (lines[0] if lines else "")
+                if len(lines) >= 2:
+                    result["old_present_reading"] = lines[0]
+            elif "PREVIOUS READING" in lbl_upper:
+                result["previous_reading"] = lines[1] if use_second_line else (lines[0] if lines else "")
+                if len(lines) >= 2:
+                    result["old_previous_reading"] = lines[0]
 
     # Fallback for meter tables
     if not result["meter_no"] or not result["present_reading"]:
@@ -421,6 +526,10 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
                         digits = re.findall(r"\d+", c)
                         if digits and not result["present_reading"]:
                             result["present_reading"] = digits[0]
+
+    # Connections with defective status (e.g. "Def-Est") and no reading
+    if is_defective and not result["present_reading"]:
+        result["present_reading"] = "Defective"
 
     return result
 
@@ -615,7 +724,7 @@ class MCODocumentGenerator:
             if len(t_meter.rows) > 5:
                 r5 = t_meter.rows[5].cells
                 old_m = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
-                read = str(rec.get("present_reading", ""))
+                read = "Defective" if (rec.get("is_defective") or not rec.get("present_reading") and "def" in str(rec.get("status", "")).lower()) else str(rec.get("present_reading", ""))
                 if r5[0].paragraphs[0].runs:
                     r5[0].paragraphs[0].runs[0].text = old_m
                 else:
@@ -716,7 +825,7 @@ class MCODocumentGenerator:
             t3 = doc.tables[3]
             r_rem = t3.rows[2].cells
             old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
-            reading = str(rec.get("present_reading") or "")
+            reading = "Defective" if (rec.get("is_defective") or not rec.get("present_reading") and "def" in str(rec.get("status", "")).lower()) else str(rec.get("present_reading") or "")
             _set_cell_text(r_rem[3], old_meter, bold=True, center=True, font_size_pt=11.0)
             _set_cell_text(r_rem[4], reading, bold=True, center=True, font_size_pt=11.0)
             r_rem[5].text = ""  # Advance Units blank
@@ -880,8 +989,12 @@ class LicenseGateDialog(tk.Toplevel):
         self.resizable(False, False)
         self.configure(bg=CARD_BG)
         self.update_idletasks()
+        remove_title_bar_icon(self)
         set_dark_title_bar(self)
+        self.after(20, lambda: remove_title_bar_icon(self))
         self.after(50, lambda: set_dark_title_bar(self))
+        self.after(150, lambda: (remove_title_bar_icon(self), set_dark_title_bar(self)))
+        self.bind("<Map>", lambda e: (remove_title_bar_icon(self), set_dark_title_bar(self)), add="+")
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.transient(parent)
@@ -1035,8 +1148,12 @@ class UpdateDownloaderDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         self.update_idletasks()
+        remove_title_bar_icon(self)
         set_dark_title_bar(self)
+        self.after(20, lambda: remove_title_bar_icon(self))
         self.after(50, lambda: set_dark_title_bar(self))
+        self.after(150, lambda: (remove_title_bar_icon(self), set_dark_title_bar(self)))
+        self.bind("<Map>", lambda e: (remove_title_bar_icon(self), set_dark_title_bar(self)), add="+")
 
         self.cancelled = False
         self._build_ui()
@@ -1173,18 +1290,27 @@ class MCOMakerApp(tk.Tk):
         self.geometry("640x630")
         self.minsize(580, 540)
         self.configure(bg=BG_DARK)
-        self.update_idletasks()
-        set_dark_title_bar(self)
-        self.after(50, lambda: set_dark_title_bar(self))
-        self.after(200, lambda: set_dark_title_bar(self))
-
-        # Set application icon
+        # Set application icon first
         try:
             icon_p = resource_path("assets/mcomaker.ico")
             if os.path.exists(icon_p):
                 self.iconbitmap(icon_p)
         except Exception:
             pass
+
+        self.update_idletasks()
+        set_dark_title_bar(self)
+        self.after(50, lambda: set_dark_title_bar(self))
+        self.after(150, lambda: set_dark_title_bar(self))
+        self.after(400, lambda: set_dark_title_bar(self))
+
+        # Re-apply immediately when the window is physically mapped to screen
+        def _on_mapped(event):
+            if event.widget == self:
+                set_dark_title_bar(self)
+                self.after(30, lambda: set_dark_title_bar(self))
+
+        self.bind("<Map>", _on_mapped, add="+")
 
         self.license_mgr = LicenseManager()
         self.records: list[dict] = []
@@ -1413,6 +1539,7 @@ class MCOMakerApp(tk.Tk):
         )
         self.log_text.tag_configure("ok", foreground="#4ec9b0")
         self.log_text.tag_configure("err", foreground="#f44747")
+        self.log_text.tag_configure("blue", foreground="#4daafc")
         self.log_text.pack(side="left", fill="both", expand=True)
 
         scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
@@ -1568,7 +1695,12 @@ class MCOMakerApp(tk.Tk):
                 if rec.get("sco_no"): bill_data["sco_no"] = rec["sco_no"]
                 
                 cached_list.append(rec)
-                self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
+                if bill_data.get("is_defective"):
+                    self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Defective"', tag="blue"))
+                elif bill_data.get("is_replaced"):
+                    self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Already replaced in previous month"', tag="err"))
+                else:
+                    self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
             except Exception as e:
                 err_str = str(e).strip()
                 if "not found" in err_str.lower() or "no bill" in err_str.lower():
@@ -1655,9 +1787,14 @@ class MCOMakerApp(tk.Tk):
         dlg.configure(bg=CARD_BG)
         dlg.transient(self)
         dlg.grab_set()
+
+        # Remove default Tk feather icon for a clean modal title bar
         dlg.update_idletasks()
+        remove_title_bar_icon(dlg)
         set_dark_title_bar(dlg)
+        dlg.after(20, lambda: remove_title_bar_icon(dlg))
         dlg.after(50, lambda: set_dark_title_bar(dlg))
+        dlg.after(150, lambda: set_dark_title_bar(dlg))
 
         tk.Label(
             dlg, text=f"⚡ {APP_NAME} v{APP_VERSION}",
