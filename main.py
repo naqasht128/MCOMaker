@@ -3,14 +3,14 @@
 
 Automates the fetching of consumer billing data from PITC bill portals
 and instantly generates official Sub Division & RO Office Meter Change Orders (MCOs)
-in Microsoft Word (.docx) and PDF formats.
+in Microsoft Word (.docx) format.
 
 Features:
 - Instant startup (<50ms) with local license cache & hardware binding
 - Smart detection of Excel columns (Ref No, MSN, Sim No, Sim ID, Date, Telco, SCO No)
 - Multi-threaded background bill scraper with retry logic
 - Caching of scraped consumer details in %LOCALAPPDATA%/MCO Maker/Temp
-- High-fidelity Sub Division and RO Office MCO generation (Word & PDF)
+- High-fidelity Sub Division and RO Office MCO generation (Word)
 - Modern VS Code Dark+ styling and Windows 10/11 immersive dark mode title bar
 """
 
@@ -49,12 +49,6 @@ from openpyxl import load_workbook
 import docx
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
-
-# ReportLab for native PDF generation
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
 
 # Application Metadata
 APP_NAME = "MCO Maker"
@@ -432,10 +426,10 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
 
 
 # ====================================================================
-# DOCUMENT GENERATOR (WORD & PDF)
+# DOCUMENT GENERATOR (MS WORD)
 # ====================================================================
 class MCODocumentGenerator:
-    """Generates official Sub Division and RO Office MCO documents in DOCX and PDF."""
+    """Generates official Sub Division and RO Office MCO documents in DOCX format."""
 
     @staticmethod
     def format_account_no(ref: str) -> str:
@@ -760,465 +754,7 @@ class MCODocumentGenerator:
             elif "Authority" in txt and "_" in txt:
                 p.text = "Authority: SDO (E) PESCO"
 
-    @classmethod
-    def convert_docx_to_pdf(cls, docx_path: str, pdf_path: str) -> bool:
-        """Converts DOCX to PDF using Word COM automation or docx2pdf for 100% ditto copy."""
-        abs_docx = os.path.abspath(docx_path)
-        abs_pdf = os.path.abspath(pdf_path)
 
-        # 1. Try direct Word COM automation
-        word = None
-        co_init = False
-        try:
-            try:
-                import pythoncom
-                pythoncom.CoInitialize()
-                co_init = True
-            except Exception:
-                pass
-            import win32com.client
-            try:
-                word = win32com.client.DispatchEx("Word.Application")
-            except Exception:
-                word = win32com.client.Dispatch("Word.Application")
-            word.Visible = False
-            word.DisplayAlerts = False
-            doc = word.Documents.Open(abs_docx, ReadOnly=True)
-            doc.SaveAs(abs_pdf, FileFormat=17)  # 17 = wdFormatPDF
-            doc.Close(False)
-            if os.path.exists(abs_pdf) and os.path.getsize(abs_pdf) > 0:
-                return True
-        except ImportError:
-            pass  # pywin32 not installed in current Python environment, fallback to ReportLab
-        except Exception as e:
-            logger.debug(f"Word COM automation skipped: {e}")
-        finally:
-            if word is not None:
-                try:
-                    word.Quit()
-                except Exception:
-                    pass
-            if co_init:
-                try:
-                    pythoncom.CoUninitialize()
-                except Exception:
-                    pass
-
-        # 2. Try docx2pdf library
-        try:
-            from docx2pdf import convert
-            convert(abs_docx, abs_pdf)
-            if os.path.exists(abs_pdf) and os.path.getsize(abs_pdf) > 0:
-                return True
-        except ImportError:
-            pass  # docx2pdf not installed, fallback to ReportLab
-        except Exception as e:
-            logger.debug(f"docx2pdf conversion skipped: {e}")
-
-        return False
-
-    @classmethod
-    def generate_sub_division_pdf(cls, out_path: str, records: list[dict], template_path: str = None):
-        if not template_path:
-            template_path = resource_path("templates/sub_division_mco_template.docx")
-
-        # 1. Direct Word conversion (ditto copy of MS Word)
-        temp_docx = out_path + ".temp.docx"
-        try:
-            cls.generate_sub_division_docx(template_path, temp_docx, records)
-            if cls.convert_docx_to_pdf(temp_docx, out_path):
-                return
-        except Exception as e:
-            logger.debug(f"Direct Word conversion for Sub Division skipped/failed: {e}")
-        finally:
-            if os.path.exists(temp_docx):
-                try:
-                    os.remove(temp_docx)
-                except Exception:
-                    pass
-
-        # 2. Pure ReportLab fallback (uncolored, exact styling matching MS Word template ditto)
-        doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=25, bottomMargin=25)
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13.5, alignment=1, spaceAfter=2)
-        sub_title_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=13, alignment=1, spaceAfter=4)
-        label_style = ParagraphStyle('LabelStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=12)
-        table_cell = ParagraphStyle('TableCell', parent=styles['Normal'], fontName='Helvetica', fontSize=8, alignment=1)
-        table_cell_bold = ParagraphStyle('TableCellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, alignment=1)
-
-        story = []
-        for idx, rec in enumerate(records):
-            if idx > 0:
-                story.append(PageBreak())
-
-            formatted_ac = cls.format_account_no(rec.get("reference", ""))
-            sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
-            sco_no = rec.get('sco_no', '')
-            date_str = rec.get('date', '')
-            name = rec.get('name', '')
-            addr = rec.get('address', '')
-            feeder = rec.get('feeder', '')
-            sim_no = rec.get('sim_no', '')
-            sim_id = rec.get('sim_id', '')
-            telco = rec.get('telco', '')
-
-            # Book No: Right aligned (Book No: regular, number bold underlined)
-            story.append(Paragraph(f"Book No: <u>&nbsp;<b>{sco_no}</b>&nbsp;</u>", ParagraphStyle('BookNoR', parent=label_style, alignment=2, fontSize=11)))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph("WATER & POWER DEVELOPMENT AUTHORITY", title_style))
-            story.append(Paragraph("POWER WING", sub_title_style))
-            story.append(Spacer(1, 2))
-
-            # Office line spanning across full width matching Word
-            story.append(Paragraph(f"Office: ______________________________<b><u>SDO (E) PESCO {sub_div_name}</u></b>____ ______________________________", label_style))
-            story.append(Spacer(1, 3))
-            story.append(Paragraph("<b>METER CHANGE ORDER</b>", ParagraphStyle('MCO', parent=title_style, fontSize=11, spaceAfter=1)))
-            story.append(Paragraph(f"Date: <u>&nbsp;<b>__{date_str}__</b>&nbsp;</u>", ParagraphStyle('DateR', parent=label_style, alignment=2)))
-            story.append(Spacer(1, 3))
-
-            # Consumer's Name
-            name_underscores = '_' * max(5, 78 - len(name))
-            story.append(Paragraph(f"Consumer's Name: ______<b><u>{name}</u></b>{name_underscores}", label_style))
-            story.append(Spacer(1, 3))
-
-            # Address with dynamic underscores preventing line wrap
-            addr_underscores = '_' * max(5, 74 - len(addr))
-            story.append(Paragraph(f"Address: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_________<b><u>{addr}</u></b>{addr_underscores}", label_style))
-            story.append(Spacer(1, 3))
-
-            # Feeder No
-            feeder_underscores = '_' * max(5, 78 - len(feeder))
-            story.append(Paragraph(f"Feeder No: _____________<b><u>{feeder}</u></b>{feeder_underscores}", label_style))
-            story.append(Spacer(1, 3))
-
-            # Reason For Change and Sim Details exactly matching MS Word
-            story.append(Paragraph("Reason For Change: ____________<b><u>Replacement</u></b>____________________________________________________", label_style))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph(f"Sim No: <b><u>{sim_no}</u></b> &nbsp;&nbsp;&nbsp;&nbsp; Sim ID: <b><u>{sim_id}</u></b> &nbsp;&nbsp;&nbsp;&nbsp; Telco: <b><u>{telco}</u></b>", ParagraphStyle('SimR', parent=label_style, alignment=2)))
-            story.append(Spacer(1, 4))
-
-            # To / Account No
-            to_data = [
-                [
-                    Paragraph("To,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Line Superintendent,", label_style),
-                    Paragraph(f"Account No: &nbsp;&nbsp;&nbsp;&nbsp;<b><u>{formatted_ac}</u></b>", ParagraphStyle('AcR', parent=label_style, alignment=2, fontSize=10.5))
-                ]
-            ]
-            t_to = Table(to_data, colWidths=[250, 273])
-            t_to.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-            ]))
-            story.append(t_to)
-            story.append(Spacer(1, 3))
-            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;Please change meter on premises of above consumer and report below", label_style))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph("Sub-Divisional Officer: ____________________ &nbsp;&nbsp;&nbsp;&nbsp; Date: ________________", ParagraphStyle('SdoR', parent=label_style, alignment=2)))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("<b>REPORT</b>", ParagraphStyle('Rep', parent=title_style, fontSize=10, alignment=1)))
-            story.append(Spacer(1, 2))
-
-            # Meter Table: Reading (NOT Read-ing)
-            meter_table_data = [
-                [Paragraph("<b>Meter Installed</b>", table_cell_bold)] + [""] * 8,
-                [
-                    Paragraph("Meter No", table_cell_bold), Paragraph("Make", table_cell_bold),
-                    Paragraph("Const", table_cell_bold), Paragraph("Amps", table_cell_bold),
-                    Paragraph("Volts", table_cell_bold), Paragraph("Phase", table_cell_bold),
-                    Paragraph("MF", table_cell_bold), Paragraph("Reading", table_cell_bold),
-                    Paragraph("Range (No of Digits)", table_cell_bold),
-                ],
-                [
-                    Paragraph(f"<b>{str(rec.get('msn', ''))}</b>", table_cell_bold), Paragraph("", table_cell), Paragraph("", table_cell),
-                    Paragraph("", table_cell), Paragraph("", table_cell), Paragraph("<b>S/P</b>", table_cell_bold),
-                    Paragraph("<b>1</b>", table_cell_bold), Paragraph("<b>00000</b>", table_cell_bold), Paragraph("<b>5</b>", table_cell_bold),
-                ],
-                [Paragraph("<b>Meter Removed</b>", table_cell_bold)] + [""] * 8,
-                [
-                    Paragraph("Meter No", table_cell_bold), Paragraph("Make", table_cell_bold),
-                    Paragraph("Const", table_cell_bold), Paragraph("Amps", table_cell_bold),
-                    Paragraph("Volts", table_cell_bold), Paragraph("Phase", table_cell_bold),
-                    Paragraph("MF", table_cell_bold), Paragraph("Reading", table_cell_bold),
-                    Paragraph("Range (No of Digits)", table_cell_bold),
-                ],
-                [
-                    Paragraph(f"<b>{str(rec.get('old_meter_no') or rec.get('meter_no') or '')}</b>", table_cell_bold), Paragraph("", table_cell), Paragraph("", table_cell),
-                    Paragraph("", table_cell), Paragraph("", table_cell), Paragraph("<b>S/P</b>", table_cell_bold),
-                    Paragraph("<b>1</b>", table_cell_bold), Paragraph(f"<b>{str(rec.get('present_reading', ''))}</b>", table_cell_bold), Paragraph("<b>5</b>", table_cell_bold),
-                ]
-            ]
-            mt = Table(meter_table_data, colWidths=[90, 45, 45, 50, 55, 45, 65, 65, 63])
-            mt.setStyle(TableStyle([
-                ('SPAN', (0, 0), (8, 0)),
-                ('SPAN', (0, 3), (8, 3)),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('TOPPADDING', (0, 0), (-1, -1), 1.5),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
-            ]))
-            story.append(mt)
-            story.append(Spacer(1, 5))
-
-            # Text below table matching MS Word lines exactly:
-            story.append(Paragraph("Store requistion<br/>No, and Date __________________________________________________________________________________", label_style))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph("Entered in Meter Movement Card<br/>(Installed Meter) ___________________________________________________________________________", label_style))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph("Entered in Meter Movement Card<br/>(Removed Meter) _____________________________________________________________________________", label_style))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph("Changed by ______________________________ Date __________________ Time __________________", label_style))
-            story.append(Spacer(1, 2))
-            story.append(Paragraph("Meter/Card/Cards has/have been duly completed by me and kept with the Meter/Meters In the<br/>Presence of the consumer or his representative Mr _____________________________________________________", label_style))
-            story.append(Spacer(1, 5))
-
-            # Signatures table matching MS Word
-            sig_data = [
-                [
-                    Paragraph("____________________________________<br/>(Consumer Signature)", label_style),
-                    Paragraph("Line Supdt. __________________ &nbsp;Date ____________", ParagraphStyle('LSR', parent=label_style, alignment=2))
-                ]
-            ]
-            t_sig = Table(sig_data, colWidths=[260, 263])
-            t_sig.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-            ]))
-            story.append(t_sig)
-            story.append(Spacer(1, 4))
-
-            # CHARGE matching MS Word
-            story.append(Paragraph("<b>CHARGE</b>", ParagraphStyle('ChargeH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, alignment=1, spaceAfter=1)))
-            story.append(Paragraph("(In accordance with item 2 of the schedule of general charges, If the meter has been removed or had its Position changed at the request of the consumer the consumer shall be charged at the rate applicable of the time of changed).", ParagraphStyle('ChargeBody', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=8.5, alignment=1)))
-
-        doc.build(story)
-
-    @classmethod
-    def generate_ro_mco_pdf(cls, out_path: str, records: list[dict], template_path: str = None):
-        if not template_path:
-            template_path = resource_path("templates/ro_mco_template.docx")
-
-        # 1. Direct Word conversion (ditto copy of MS Word)
-        temp_docx = out_path + ".temp.docx"
-        try:
-            cls.generate_ro_mco_docx(template_path, temp_docx, records)
-            if cls.convert_docx_to_pdf(temp_docx, out_path):
-                return
-        except Exception as e:
-            logger.debug(f"Direct Word conversion for RO MCO skipped/failed: {e}")
-        finally:
-            if os.path.exists(temp_docx):
-                try:
-                    os.remove(temp_docx)
-                except Exception:
-                    pass
-
-        # 2. Pure ReportLab fallback (uncolored, plain styling matching MS Word)
-        doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=28, leftMargin=28, topMargin=28, bottomMargin=28)
-        styles = getSampleStyleSheet()
-        small_header = ParagraphStyle('SmallHeader', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9)
-        right_small = ParagraphStyle('RightSmall', parent=small_header, alignment=2)
-        center_title = ParagraphStyle('CenterTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=12, alignment=1, spaceAfter=2)
-        center_sub = ParagraphStyle('CenterSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, alignment=1, spaceAfter=4)
-        cell_s = ParagraphStyle('CellS', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9, alignment=1)
-        cell_sb = ParagraphStyle('CellSB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7, leading=9, alignment=1)
-        cell_left = ParagraphStyle('CellLeft', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9)
-        cell_left_b = ParagraphStyle('CellLeftB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7, leading=9)
-
-        story = []
-        for idx, rec in enumerate(records):
-            if idx > 0:
-                story.append(PageBreak())
-
-            raw_ac = re.sub(r"\D", "", rec.get("reference", ""))
-            batch_no = raw_ac[:2] if len(raw_ac) >= 2 else ""
-            sub_div = raw_ac[2:7] if len(raw_ac) >= 7 else ""
-            ac_num = raw_ac[7:14] if len(raw_ac) >= 14 else raw_ac[7:]
-
-            hdr_table = [
-                [
-                    Paragraph("P # 542 of CP Code 15.<br/>Para 31 of CP Code 13.<br/>Para 31 of CP Code 14.", small_header),
-                    Paragraph("<b>CP-FORM-138</b><br/>Version: 3.0<br/>Revised on 27-04-12", right_small)
-                ]
-            ]
-            story.append(Table(hdr_table, colWidths=[270, 270]))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("METER DATA CHANGE FORM", center_title))
-            story.append(Paragraph("TYPE OF TRANSACTION", center_sub))
-
-            # b) Replacement Bold and tick mark on right
-            # l) Name & Address on RO MCO is not needed. may remain blank as presented.
-            trans_table = [
-                [
-                    Paragraph("<b>1- REPLACEMENT &#x2713;</b>", cell_left_b),
-                    Paragraph("2-   RECONNECTION", cell_left),
-                    Paragraph("Name &amp; Address: ____________________________", cell_left)
-                ],
-                [
-                    Paragraph("3-   TEMPORARY DISCONNECTION", cell_left),
-                    Paragraph("4-   PERMANENT DISCONNECTION", cell_left),
-                    Paragraph("of Consumer: ____________________________", cell_left)
-                ]
-            ]
-            tt = Table(trans_table, colWidths=[150, 150, 240])
-            tt.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-            ]))
-            story.append(tt)
-            story.append(Spacer(1, 6))
-
-            # a) Type section blank
-            # c) Old and new blank
-            # d) bold entries
-            # e) centered entries
-            sco_no_val = str(rec.get("sco_no") or rec.get("mco_number") or "")
-            date_val = str(rec.get("date") or rec.get("issue_date") or "")
-            ref_table = [
-                [
-                    Paragraph("<b>Reference Number</b>", cell_sb), "", "",
-                    Paragraph("<b>MCO / RCO / TDCO / PDCO</b>", cell_sb), "", "", "", "",
-                    Paragraph("<b>No. of KWH meter</b>", cell_sb), ""
-                ],
-                [
-                    Paragraph("Batch #", cell_sb), Paragraph("Sub Division", cell_sb), Paragraph("Account Number", cell_sb),
-                    Paragraph("Type", cell_sb), Paragraph("TRF", cell_sb), Paragraph("Number", cell_sb),
-                    Paragraph("Issue Date", cell_sb), Paragraph("Execution Date", cell_sb), Paragraph("Old", cell_sb), Paragraph("New", cell_sb),
-                ],
-                [
-                    Paragraph(f"<b>{batch_no}</b>", cell_sb), Paragraph(f"<b>{sub_div}</b>", cell_sb), Paragraph(f"<b>{ac_num}</b>", cell_sb),
-                    Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph(f"<b>{sco_no_val}</b>", cell_sb),
-                    Paragraph(f"<b>{date_val}</b>", cell_sb), Paragraph(f"<b>{date_val}</b>", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb),
-                ]
-            ]
-            rt = Table(ref_table, colWidths=[38, 52, 60, 25, 25, 95, 75, 75, 25, 25])
-            rt.setStyle(TableStyle([
-                ('SPAN', (0, 0), (2, 0)),
-                ('SPAN', (3, 0), (7, 0)),
-                ('SPAN', (8, 0), (9, 0)),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 1),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 1),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ]))
-            story.append(rt)
-            story.append(Spacer(1, 6))
-
-            story.append(Paragraph("<b>METER REMOVED</b>", ParagraphStyle('MR', parent=center_sub, alignment=0)))
-            old_meter = str(rec.get("old_meter_no") or rec.get("meter_no") or "")
-            reading = str(rec.get("present_reading") or "")
-            # f) Advance Units blank, g) Multiplying Factor blank, h) Meter Reading blank
-            rem_table = [
-                [
-                    Paragraph("For Gen<br/>Meter No.", cell_sb), Paragraph("For MDI<br/>Type", cell_sb),
-                    Paragraph("For MDI<br/>Set No.", cell_sb), Paragraph("Meter Number", cell_sb),
-                    Paragraph("Final Reading", cell_sb), Paragraph("Advance Units", cell_sb),
-                    Paragraph("Round Comp Code", cell_sb), Paragraph("Multiplying Factor", cell_sb), Paragraph("Meter Reading", cell_sb),
-                ],
-                [
-                    Paragraph("1.", cell_sb), Paragraph("KWH", cell_sb), Paragraph("", cell_sb),
-                    Paragraph(f"<b>{old_meter}</b>", cell_sb), Paragraph(f"<b>{reading}</b>", cell_sb),
-                    Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb), Paragraph("", cell_sb),
-                ],
-                [
-                    Paragraph("2.", cell_s), Paragraph("KVARH", cell_s), Paragraph("", cell_s),
-                    Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s),
-                ],
-                [
-                    Paragraph("3.", cell_s), Paragraph("MDI", cell_s), Paragraph("", cell_s),
-                    Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s),
-                ],
-            ]
-            rmt = Table(rem_table, colWidths=[45, 45, 45, 85, 65, 60, 75, 60, 60])
-            rmt.setStyle(TableStyle([
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]))
-            story.append(rmt)
-            story.append(Spacer(1, 6))
-
-            story.append(Paragraph("<b>METER INSTALLED</b>", ParagraphStyle('MI', parent=center_sub, alignment=0)))
-            # i) Location Code: O, Manfg Code: 12, Meter Code: 002, Multiplying Factor: 1, Meter Reading: 00000, Initial Meter Reading: 00000
-            inst_table = [
-                [
-                    Paragraph("For Gen<br/>Meter No.", cell_sb), Paragraph("For MDI<br/>Type", cell_sb),
-                    Paragraph("For MDI<br/>Set No.", cell_sb), Paragraph("Meter Number", cell_sb),
-                    Paragraph("Location Code", cell_sb), Paragraph("Manfg Code", cell_sb), Paragraph("Meter Code", cell_sb),
-                    Paragraph("Multiplying Factor", cell_sb), Paragraph("Meter Reading", cell_sb), Paragraph("Initial Reading", cell_sb),
-                ],
-                [
-                    Paragraph("1.", cell_sb), Paragraph("KWH", cell_sb), Paragraph("", cell_sb),
-                    Paragraph(f"<b>{rec.get('msn', '')}</b>", cell_sb), Paragraph("<b>O</b>", cell_sb), Paragraph("<b>12</b>", cell_sb), Paragraph("<b>002</b>", cell_sb),
-                    Paragraph("<b>1</b>", cell_sb), Paragraph("<b>00000</b>", cell_sb), Paragraph("<b>00000</b>", cell_sb),
-                ],
-                [
-                    Paragraph("2.", cell_s), Paragraph("KVARH", cell_s), Paragraph("", cell_s),
-                    Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s),
-                ],
-                [
-                    Paragraph("3.", cell_s), Paragraph("MDI", cell_s), Paragraph("Rest No.", cell_s),
-                    Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s), Paragraph("", cell_s),
-                ],
-                [
-                    Paragraph("<b>Feeder Code:</b>", cell_left_b), "", "", "", "",
-                    "", "", Paragraph("<b>Cum MDI –</b>", cell_left_b), "", ""
-                ]
-            ]
-            imt = Table(inst_table, colWidths=[45, 45, 45, 85, 45, 50, 45, 60, 60, 60])
-            imt.setStyle(TableStyle([
-                ('SPAN', (0, 4), (4, 4)),
-                ('SPAN', (7, 4), (9, 4)),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]))
-            story.append(imt)
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("* For Reconnection only", ParagraphStyle('Reconn', parent=small_header, fontSize=6)))
-            story.append(Spacer(1, 4))
-
-            # j) Reason just "MCO"
-            # k) Sim No & Id & Telco not needed on RO MCO
-            story.append(Paragraph("<b>Reason:</b> <u>___________MCO_______</u>", cell_left))
-            story.append(Spacer(1, 3))
-            story.append(Paragraph("<b>Authority:</b> <u>SDO (E) PESCO</u>", cell_left))
-            story.append(Spacer(1, 8))
-
-            sig_table = [
-                [
-                    Paragraph("<b>Prepared by:</b> ___________________________<br/><b>Date:</b> ____________&nbsp;&nbsp;&nbsp;&nbsp;<b>Name:</b> __________________", cell_left),
-                    Paragraph("<b>Checked by:</b> ____________________________<br/><b>Date:</b> ____________&nbsp;&nbsp;&nbsp;&nbsp;<b>Name:</b> __________________", cell_left),
-                ],
-                [
-                    Paragraph("<b>CSO / SDO / RO:</b> ________________________&nbsp;&nbsp;<b>Signature & Stamp</b><br/><b>Date:</b> ____________", cell_left),
-                    ""
-                ]
-            ]
-            st = Table(sig_table, colWidths=[270, 270])
-            st.setStyle(TableStyle([
-                ('SPAN', (0, 1), (1, 1)),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ]))
-            story.append(st)
-
-        doc.build(story)
 
 
 # ====================================================================
@@ -1621,7 +1157,7 @@ class MCOMakerApp(tk.Tk):
             mco_btn_row, text="🏢  For Sub Division", font=(UI_FONT, 10, "bold"),
             fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground=ACCENT_BLUE_HOVER,
             activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=18, pady=7,
-            command=lambda: self._prompt_make_mco("sub_division"), state="disabled"
+            command=lambda: self._generate_mco("sub_division"), state="disabled"
         )
         self.btn_sub_div.pack(side="left", padx=(0, 10))
 
@@ -1629,7 +1165,7 @@ class MCOMakerApp(tk.Tk):
             mco_btn_row, text="🏛  For RO Office", font=(UI_FONT, 10, "bold"),
             fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground="#7a4cc7",
             activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=18, pady=7,
-            command=lambda: self._prompt_make_mco("ro_office"), state="disabled"
+            command=lambda: self._generate_mco("ro_office"), state="disabled"
         )
         self.btn_ro_office.pack(side="left")
 
@@ -1762,7 +1298,7 @@ class MCOMakerApp(tk.Tk):
         # Display colored box above log
         self.status_box.configure(bg=ACCENT_GREEN)
         self.status_badge.configure(text=f"✔  {badge_text}", bg=ACCENT_GREEN)
-        self.mco_status_hint.configure(text="✔ Ready to generate Word or PDF", fg="#89d185")
+        self.mco_status_hint.configure(text="✔ Ready to generate MS Word MCO", fg="#89d185")
         self.btn_sub_div.configure(state="normal", bg=ACCENT_BLUE, fg=TEXT_WHITE, cursor="hand2")
         self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
 
@@ -1883,66 +1419,20 @@ class MCOMakerApp(tk.Tk):
             messagebox.showinfo("Completed", "All billing information fetched successfully!\nYou can now generate Sub Division or RO Office MCOs.")
 
     # ====================================================================
-    # MAKE MCO PROMPT & GENERATION
+    # MAKE MCO GENERATION (MS WORD)
     # ====================================================================
-    def _prompt_make_mco(self, mco_type: str):
-        """Shows modal dialog asking for MS Word or PDF format."""
-        dlg = tk.Toplevel(self)
-        dlg.title("Make MCO — Format Selection")
-        dlg.geometry("440x240")
-        dlg.resizable(False, False)
-        dlg.configure(bg=CARD_BG)
-        dlg.update_idletasks()
-        set_dark_title_bar(dlg)
-        dlg.after(50, lambda: set_dark_title_bar(dlg))
-        dlg.transient(self)
-        dlg.grab_set()
-
-        type_label = "Sub Division" if mco_type == "sub_division" else "RO Office"
-        tk.Label(
-            dlg, text=f"Generate {type_label} MCO",
-            font=(UI_FONT, 12, "bold"), fg=TEXT_WHITE, bg=CARD_BG
-        ).pack(pady=(16, 4))
-
-        tk.Label(
-            dlg, text="Choose your preferred output format:",
-            font=(UI_FONT, 9), fg=TEXT_MUTED, bg=CARD_BG
-        ).pack(pady=(0, 16))
-
-        btn_box = tk.Frame(dlg, bg=CARD_BG)
-        btn_box.pack(fill="x", padx=30, pady=6)
-
-        def on_choose(fmt: str):
-            dlg.destroy()
-            self._generate_mco(mco_type, fmt)
-
-        tk.Button(
-            btn_box, text="📄 Microsoft Word (.docx)", font=(UI_FONT, 10, "bold"),
-            fg=TEXT_WHITE, bg=ACCENT_BLUE, activebackground=ACCENT_BLUE_HOVER,
-            relief="flat", cursor="hand2", pady=8,
-            command=lambda: on_choose("docx")
-        ).pack(fill="x", pady=4)
-
-        tk.Button(
-            btn_box, text="📑 PDF Document (.pdf)", font=(UI_FONT, 10, "bold"),
-            fg=TEXT_WHITE, bg=ACCENT_GREEN, activebackground=ACCENT_GREEN_HOVER,
-            relief="flat", cursor="hand2", pady=8,
-            command=lambda: on_choose("pdf")
-        ).pack(fill="x", pady=4)
-
-    def _generate_mco(self, mco_type: str, fmt: str):
+    def _generate_mco(self, mco_type: str):
         if not self.records:
             messagebox.showwarning("No Data", "No records available to generate MCO.")
             return
 
         type_name = "Sub_Division_MCO" if mco_type == "sub_division" else "RO_Office_MCO"
-        ext = ".docx" if fmt == "docx" else ".pdf"
-        default_filename = f"{type_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        default_filename = f"{type_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
 
         save_path = filedialog.asksaveasfilename(
             title=f"Save {type_name.replace('_', ' ')}",
             initialfile=default_filename,
-            filetypes=[(f"{fmt.upper()} File", f"*{ext}")]
+            filetypes=[("Microsoft Word Document", "*.docx")]
         )
         if not save_path:
             return
@@ -1950,16 +1440,10 @@ class MCOMakerApp(tk.Tk):
         try:
             if mco_type == "sub_division":
                 tmpl = resource_path("templates/sub_division_mco_template.docx")
-                if fmt == "docx":
-                    MCODocumentGenerator.generate_sub_division_docx(tmpl, save_path, self.records)
-                else:
-                    MCODocumentGenerator.generate_sub_division_pdf(save_path, self.records, template_path=tmpl)
+                MCODocumentGenerator.generate_sub_division_docx(tmpl, save_path, self.records)
             else:
                 tmpl = resource_path("templates/ro_mco_template.docx")
-                if fmt == "docx":
-                    MCODocumentGenerator.generate_ro_mco_docx(tmpl, save_path, self.records)
-                else:
-                    MCODocumentGenerator.generate_ro_mco_pdf(save_path, self.records, template_path=tmpl)
+                MCODocumentGenerator.generate_ro_mco_docx(tmpl, save_path, self.records)
 
             res = messagebox.askyesno(
                 "MCO Generated",
