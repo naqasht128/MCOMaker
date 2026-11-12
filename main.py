@@ -1122,10 +1122,14 @@ class LicenseGateDialog(tk.Toplevel):
         p_row = tk.Frame(price_box, bg=INPUT_BG)
         p_row.pack(fill="x", padx=12, pady=(0, 6))
 
-        tk.Label(
-            p_row, text="• 6 Months: Rs. 2,500 (180 Days, 1 PC)\n• 1 Year: Rs. 5,000 (365 Days, 1 PC) [Recommended]",
+        self.lbl_plans = tk.Label(
+            p_row, text="• 6 Months: Rs. 3,000 (180 Days, 1 PC)\n• 1 Year: Rs. 5,000 (365 Days, 1 PC) [Recommended]",
             font=(UI_FONT, 8), fg="#4ec9b0", bg=INPUT_BG, justify="left"
-        ).pack(side="left")
+        )
+        self.lbl_plans.pack(side="left")
+
+        # Dynamically fetch updated plans from licensing server
+        threading.Thread(target=self._fetch_dynamic_plans, daemon=True).start()
 
         # Serial Key Entry
         tk.Label(
@@ -1163,6 +1167,25 @@ class LicenseGateDialog(tk.Toplevel):
             self, text="Need a license key? Contact TN Developers Co. on WhatsApp (+92 333 9962474)",
             font=(UI_FONT, 8), fg=TEXT_MUTED, bg=CARD_BG
         ).pack(side="bottom", pady=16)
+
+    def _fetch_dynamic_plans(self):
+        try:
+            url = f"{LICENSE_API_URL}/api/plans"
+            resp = requests.get(url, timeout=3)
+            if resp.status_code == 200:
+                data = resp.json()
+                summary = data.get("summary")
+                if summary:
+                    self.after(0, lambda s=summary: self._safe_update_plans(s))
+        except Exception:
+            pass
+
+    def _safe_update_plans(self, summary_text: str):
+        try:
+            if hasattr(self, "lbl_plans") and self.lbl_plans.winfo_exists():
+                self.lbl_plans.configure(text=summary_text)
+        except Exception:
+            pass
 
     def _copy_hwid(self):
         self.clipboard_clear()

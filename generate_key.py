@@ -65,7 +65,7 @@ UI_FONT = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
 MONO_FONT = "Consolas" if sys.platform == "win32" else "DejaVu Sans Mono"
 
 PLANS = [
-    ("6_months", "6 Months  —  Rs. 2,500  (180 Days, 1 Device)", 180, 1),
+    ("6_months", "6 Months  —  Rs. 3,000  (180 Days, 1 Device)", 180, 1),
     ("1_year", "1 Year  —  Rs. 5,000  (365 Days, 1 Device)  [Recommended]", 365, 1),
 ]
 
