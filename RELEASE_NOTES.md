@@ -1,3 +1,3 @@
-# Release v1.0.3
+# Release v1.0.4
 
-Log window formatting, Excel log export, completion sound chime, and MCO button controls
+Dynamic pricing sync and updated subscription rates (6mo: Rs. 3000, 1yr: Rs. 5000)
