@@ -502,32 +502,73 @@ class MCODocumentGenerator:
                 else:
                     p.text = f"Date: __{rec.get('date', '')}__"
             elif "Consumer's Name:" in txt:
-                if len(p.runs) > 2:
-                    p.runs[2].text = str(rec.get("name", ""))
-                    for ri in range(3, min(5, len(p.runs))):
+                name = str(rec.get("name", ""))
+                if len(p.runs) >= 8:
+                    p.runs[2].text = name
+                    for ri in [3, 4, 6, 7]:
                         p.runs[ri].text = ""
+                    p.runs[5].text = "_" * max(5, 95 - 23 - len(name))
+                elif len(p.runs) > 2:
+                    p.runs[2].text = name
+                    for ri in range(3, len(p.runs)):
+                        p.runs[ri].text = ""
+                    p.runs[-1].text = "_" * max(5, 95 - 23 - len(name))
                 else:
-                    p.text = f"Consumer's Name: ______{rec.get('name', '')}_______________________________________________________"
+                    p.text = f"Consumer's Name: ______{name}" + ("_" * max(5, 95 - 23 - len(name)))
             elif "Address:" in txt and "Consumer" not in txt:
-                if len(p.runs) > 3:
-                    p.runs[3].text = str(rec.get("address", ""))
-                    for ri in range(4, min(7, len(p.runs))):
+                addr = str(rec.get("address", ""))
+                if len(p.runs) >= 10:
+                    p.runs[3].text = addr
+                    for ri in [4, 5, 6, 8, 9]:
                         p.runs[ri].text = ""
+                    p.runs[7].text = "_" * max(5, 91 - 19 - len(addr))
+                elif len(p.runs) > 3:
+                    p.runs[3].text = addr
+                    for ri in range(4, len(p.runs)):
+                        p.runs[ri].text = ""
+                    p.runs[-1].text = "_" * max(5, 91 - 19 - len(addr))
                 else:
-                    p.text = f"Address: \t_________{rec.get('address', '')}________________________________________"
+                    p.text = f"Address: \t__________{addr}" + ("_" * max(5, 91 - 19 - len(addr)))
             elif "Feeder No:" in txt:
-                if len(p.runs) > 2:
-                    p.runs[2].text = str(rec.get("feeder", ""))
+                fdr = str(rec.get("feeder", ""))
+                if len(p.runs) >= 6:
+                    p.runs[2].text = fdr
+                    for ri in [4, 5]:
+                        p.runs[ri].text = ""
+                    p.runs[3].text = "_" * max(5, 95 - 24 - len(fdr))
+                elif len(p.runs) > 2:
+                    p.runs[2].text = fdr
+                    for ri in range(3, len(p.runs)):
+                        p.runs[ri].text = ""
+                    p.runs[-1].text = "_" * max(5, 95 - 24 - len(fdr))
                 else:
-                    p.text = f"Feeder No: _____________{rec.get('feeder', '')}___________________________________________________________"
+                    p.text = f"Feeder No: _____________{fdr}" + ("_" * max(5, 95 - 24 - len(fdr)))
             elif "Reason" in txt and "Change:" in txt:
+                sim_no = str(rec.get("sim_no", ""))
+                sim_id = str(rec.get("sim_id", ""))
+                telco = str(rec.get("telco", ""))
                 if len(p.runs) > 16:
                     p.runs[3].text = "Replacement"
-                    p.runs[10].text = str(rec.get("sim_no", ""))
-                    p.runs[12].text = str(rec.get("sim_id", ""))
-                    p.runs[16].text = str(rec.get("telco", ""))
+                    p.runs[4].text = "_" * 48
+                    p.runs[5].text = "____"
+                    p.runs[6].text = "\n"
+                    p.runs[7].text = ""
+                    p.runs[8].text = ""
+                    p.runs[10].text = sim_no
+                    p.runs[12].text = sim_id
+                    p.runs[16].text = telco
                 else:
-                    p.text = f"Reason For Change: ____________Replacement____________________________________________________\t\t\tSim No: {rec.get('sim_no', '')}   Sim ID: {rec.get('sim_id', '')}   Telco: {rec.get('telco', '')}"
+                    p.text = f"Reason For Change: ____________Replacement____________________________________________________\nSim No: {sim_no}   Sim ID: {sim_id}   Telco: {telco}"
+            elif "Sim No:" in txt and "Reason" not in txt:
+                sim_no = str(rec.get("sim_no", ""))
+                sim_id = str(rec.get("sim_id", ""))
+                telco = str(rec.get("telco", ""))
+                if len(p.runs) >= 8:
+                    p.runs[1].text = sim_no
+                    p.runs[3].text = sim_id
+                    p.runs[7].text = telco
+                else:
+                    p.text = f"Sim No: {sim_no}   Sim ID: {sim_id}   Telco: {telco}"
 
         # 2. Update Tables (works with both 3-table user template and legacy 4-table template)
         tbl_offset = 0
@@ -553,6 +594,14 @@ class MCODocumentGenerator:
         m_tbl_idx = tbl_offset + 1
         if len(doc.tables) > m_tbl_idx:
             t_meter = doc.tables[m_tbl_idx]
+            # Ensure "Reading" header has no hyphen
+            if len(t_meter.rows) > 1 and len(t_meter.rows[1].cells) > 7:
+                if "Read-ing" in t_meter.rows[1].cells[7].text:
+                    t_meter.rows[1].cells[7].text = "Reading"
+            if len(t_meter.rows) > 4 and len(t_meter.rows[4].cells) > 7:
+                if "Read-ing" in t_meter.rows[4].cells[7].text:
+                    t_meter.rows[4].cells[7].text = "Reading"
+
             # Row 2 (Installed Meter)
             if len(t_meter.rows) > 2:
                 r2 = t_meter.rows[2].cells
@@ -728,7 +777,10 @@ class MCODocumentGenerator:
             except Exception:
                 pass
             import win32com.client
-            word = win32com.client.DispatchEx("Word.Application")
+            try:
+                word = win32com.client.DispatchEx("Word.Application")
+            except Exception:
+                word = win32com.client.Dispatch("Word.Application")
             word.Visible = False
             word.DisplayAlerts = False
             doc = word.Documents.Open(abs_docx, ReadOnly=True)
@@ -736,8 +788,10 @@ class MCODocumentGenerator:
             doc.Close(False)
             if os.path.exists(abs_pdf) and os.path.getsize(abs_pdf) > 0:
                 return True
+        except ImportError:
+            pass  # pywin32 not installed in current Python environment, fallback to ReportLab
         except Exception as e:
-            logger.warning(f"Word COM automation failed: {e}")
+            logger.debug(f"Word COM automation skipped: {e}")
         finally:
             if word is not None:
                 try:
@@ -756,8 +810,10 @@ class MCODocumentGenerator:
             convert(abs_docx, abs_pdf)
             if os.path.exists(abs_pdf) and os.path.getsize(abs_pdf) > 0:
                 return True
+        except ImportError:
+            pass  # docx2pdf not installed, fallback to ReportLab
         except Exception as e:
-            logger.warning(f"docx2pdf conversion failed: {e}")
+            logger.debug(f"docx2pdf conversion skipped: {e}")
 
         return False
 
@@ -773,7 +829,7 @@ class MCODocumentGenerator:
             if cls.convert_docx_to_pdf(temp_docx, out_path):
                 return
         except Exception as e:
-            logger.warning(f"Direct Word conversion for Sub Division failed: {e}")
+            logger.debug(f"Direct Word conversion for Sub Division skipped/failed: {e}")
         finally:
             if os.path.exists(temp_docx):
                 try:
@@ -781,13 +837,12 @@ class MCODocumentGenerator:
                 except Exception:
                     pass
 
-        # 2. Pure ReportLab fallback (uncolored, plain styling matching MS Word)
-        doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=30, bottomMargin=30)
+        # 2. Pure ReportLab fallback (uncolored, exact styling matching MS Word template ditto)
+        doc = SimpleDocTemplate(out_path, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=25, bottomMargin=25)
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, alignment=1, spaceAfter=2)
-        sub_title_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=1, spaceAfter=6)
+        title_style = ParagraphStyle('HeaderTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13.5, alignment=1, spaceAfter=2)
+        sub_title_style = ParagraphStyle('HeaderSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=13, alignment=1, spaceAfter=4)
         label_style = ParagraphStyle('LabelStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=12)
-        label_bold = ParagraphStyle('LabelBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12)
         table_cell = ParagraphStyle('TableCell', parent=styles['Normal'], fontName='Helvetica', fontSize=8, alignment=1)
         table_cell_bold = ParagraphStyle('TableCellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, alignment=1)
 
@@ -798,73 +853,82 @@ class MCODocumentGenerator:
 
             formatted_ac = cls.format_account_no(rec.get("reference", ""))
             sub_div_name = rec.get("sub_division", "").strip().upper() or "MANDHRA"
+            sco_no = rec.get('sco_no', '')
+            date_str = rec.get('date', '')
+            name = rec.get('name', '')
+            addr = rec.get('address', '')
+            feeder = rec.get('feeder', '')
+            sim_no = rec.get('sim_no', '')
+            sim_id = rec.get('sim_id', '')
+            telco = rec.get('telco', '')
 
-            # Book No: Right aligned (no underline on label)
-            story.append(Paragraph(f"Book No: <u>&nbsp;<b>{rec.get('sco_no', '___________')}</b>&nbsp;</u>", ParagraphStyle('BookNoR', parent=label_style, alignment=2, fontSize=11)))
+            # Book No: Right aligned (Book No: regular, number bold underlined)
+            story.append(Paragraph(f"Book No: <u>&nbsp;<b>{sco_no}</b>&nbsp;</u>", ParagraphStyle('BookNoR', parent=label_style, alignment=2, fontSize=11)))
             story.append(Spacer(1, 2))
             story.append(Paragraph("WATER & POWER DEVELOPMENT AUTHORITY", title_style))
             story.append(Paragraph("POWER WING", sub_title_style))
             story.append(Spacer(1, 2))
 
-            story.append(Paragraph(f"Office: ____________________<b><u>SDO (E) PESCO {sub_div_name}</u></b>____________________", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("<b>METER CHANGE ORDER</b>", ParagraphStyle('MCO', parent=title_style, fontSize=11, spaceAfter=2)))
-            story.append(Paragraph(f"Date: <u>&nbsp;<b>{rec.get('date', '__________')}</b>&nbsp;</u>", ParagraphStyle('DateR', parent=label_style, alignment=2)))
+            # Office line spanning across full width matching Word
+            story.append(Paragraph(f"Office: ______________________________<b><u>SDO (E) PESCO {sub_div_name}</u></b>____ ______________________________", label_style))
+            story.append(Spacer(1, 3))
+            story.append(Paragraph("<b>METER CHANGE ORDER</b>", ParagraphStyle('MCO', parent=title_style, fontSize=11, spaceAfter=1)))
+            story.append(Paragraph(f"Date: <u>&nbsp;<b>__{date_str}__</b>&nbsp;</u>", ParagraphStyle('DateR', parent=label_style, alignment=2)))
+            story.append(Spacer(1, 3))
+
+            # Consumer's Name
+            name_underscores = '_' * max(5, 78 - len(name))
+            story.append(Paragraph(f"Consumer's Name: ______<b><u>{name}</u></b>{name_underscores}", label_style))
+            story.append(Spacer(1, 3))
+
+            # Address with dynamic underscores preventing line wrap
+            addr_underscores = '_' * max(5, 74 - len(addr))
+            story.append(Paragraph(f"Address: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_________<b><u>{addr}</u></b>{addr_underscores}", label_style))
+            story.append(Spacer(1, 3))
+
+            # Feeder No
+            feeder_underscores = '_' * max(5, 78 - len(feeder))
+            story.append(Paragraph(f"Feeder No: _____________<b><u>{feeder}</u></b>{feeder_underscores}", label_style))
+            story.append(Spacer(1, 3))
+
+            # Reason For Change and Sim Details exactly matching MS Word
+            story.append(Paragraph("Reason For Change: ____________<b><u>Replacement</u></b>____________________________________________________", label_style))
+            story.append(Spacer(1, 2))
+            story.append(Paragraph(f"Sim No: <b><u>{sim_no}</u></b> &nbsp;&nbsp;&nbsp;&nbsp; Sim ID: <b><u>{sim_id}</u></b> &nbsp;&nbsp;&nbsp;&nbsp; Telco: <b><u>{telco}</u></b>", ParagraphStyle('SimR', parent=label_style, alignment=2)))
             story.append(Spacer(1, 4))
 
-            story.append(Paragraph(f"Consumer's Name: ______<b><u>{rec.get('name', '')}</u></b>_______________________________________________________", label_style))
-            story.append(Spacer(1, 3))
-            story.append(Paragraph(f"Address: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_________<b><u>{rec.get('address', '')}</u></b>________________________________________", label_style))
-            story.append(Spacer(1, 3))
-            story.append(Paragraph(f"Feeder No: _____________<b><u>{rec.get('feeder', '')}</u></b>___________________________________________________________", label_style))
-            story.append(Spacer(1, 3))
-            reason_sim_data = [
-                [
-                    Paragraph(f"Reason For Change: ____________<b><u>Replacement</u></b>________________________________________", label_style),
-                    Paragraph(f"Sim No: <b><u>{rec.get('sim_no', '')}</u></b> &nbsp;&nbsp; Sim ID: <b><u>{rec.get('sim_id', '')}</u></b> &nbsp;&nbsp; Telco: <b><u>{rec.get('telco', '')}</u></b>", ParagraphStyle('SimR', parent=label_style, alignment=2))
-                ]
-            ]
-            t_rs = Table(reason_sim_data, colWidths=[250, 270])
-            t_rs.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-            ]))
-            story.append(t_rs)
-            story.append(Spacer(1, 5))
-
+            # To / Account No
             to_data = [
                 [
                     Paragraph("To,<br/>&nbsp;&nbsp;&nbsp;&nbsp;Line Superintendent,", label_style),
-                    Paragraph(f"Account No: &nbsp;&nbsp;&nbsp;&nbsp;<b><u>{formatted_ac}</u></b>", ParagraphStyle('AcR', parent=label_style, alignment=2, fontSize=11))
+                    Paragraph(f"Account No: &nbsp;&nbsp;&nbsp;&nbsp;<b><u>{formatted_ac}</u></b>", ParagraphStyle('AcR', parent=label_style, alignment=2, fontSize=10.5))
                 ]
             ]
-            t_to = Table(to_data, colWidths=[260, 260])
+            t_to = Table(to_data, colWidths=[250, 273])
             t_to.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
             ]))
             story.append(t_to)
             story.append(Spacer(1, 3))
             story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;Please change meter on premises of above consumer and report below", label_style))
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
             story.append(Paragraph("Sub-Divisional Officer: ____________________ &nbsp;&nbsp;&nbsp;&nbsp; Date: ________________", ParagraphStyle('SdoR', parent=label_style, alignment=2)))
-            story.append(Spacer(1, 6))
+            story.append(Spacer(1, 4))
             story.append(Paragraph("<b>REPORT</b>", ParagraphStyle('Rep', parent=title_style, fontSize=10, alignment=1)))
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
 
+            # Meter Table: Reading (NOT Read-ing)
             meter_table_data = [
                 [Paragraph("<b>Meter Installed</b>", table_cell_bold)] + [""] * 8,
                 [
                     Paragraph("Meter No", table_cell_bold), Paragraph("Make", table_cell_bold),
                     Paragraph("Const", table_cell_bold), Paragraph("Amps", table_cell_bold),
                     Paragraph("Volts", table_cell_bold), Paragraph("Phase", table_cell_bold),
-                    Paragraph("MF", table_cell_bold), Paragraph("Read-ing", table_cell_bold),
+                    Paragraph("MF", table_cell_bold), Paragraph("Reading", table_cell_bold),
                     Paragraph("Range (No of Digits)", table_cell_bold),
                 ],
                 [
@@ -877,7 +941,7 @@ class MCODocumentGenerator:
                     Paragraph("Meter No", table_cell_bold), Paragraph("Make", table_cell_bold),
                     Paragraph("Const", table_cell_bold), Paragraph("Amps", table_cell_bold),
                     Paragraph("Volts", table_cell_bold), Paragraph("Phase", table_cell_bold),
-                    Paragraph("MF", table_cell_bold), Paragraph("Read-ing", table_cell_bold),
+                    Paragraph("MF", table_cell_bold), Paragraph("Reading", table_cell_bold),
                     Paragraph("Range (No of Digits)", table_cell_bold),
                 ],
                 [
@@ -886,37 +950,52 @@ class MCODocumentGenerator:
                     Paragraph("<b>1</b>", table_cell_bold), Paragraph(f"<b>{str(rec.get('present_reading', ''))}</b>", table_cell_bold), Paragraph("<b>5</b>", table_cell_bold),
                 ]
             ]
-            mt = Table(meter_table_data, colWidths=[90, 45, 45, 50, 55, 45, 65, 65, 60])
+            mt = Table(meter_table_data, colWidths=[90, 45, 45, 50, 55, 45, 65, 65, 63])
             mt.setStyle(TableStyle([
                 ('SPAN', (0, 0), (8, 0)),
                 ('SPAN', (0, 3), (8, 3)),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
             ]))
             story.append(mt)
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 5))
 
-            story.append(Paragraph("Store requisition No. and Date: ____________________________________________________________________", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("Entered in Meter Movement Card (Installed Meter): ____________________________________________________", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("Entered in Meter Movement Card (Removed Meter): ____________________________________________________", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph(f"Changed by: ________________________ Date: <u>{rec.get('date', '__________')}</u> Time: __________________", label_style))
-            story.append(Spacer(1, 4))
-            story.append(Paragraph("Meter/Card/Cards has/have been duly completed by me and kept with the Meter/Meters in the Presence of the consumer or his representative Mr: ____________________________", label_style))
-            story.append(Spacer(1, 8))
+            # Text below table matching MS Word lines exactly:
+            story.append(Paragraph("Store requistion<br/>No, and Date __________________________________________________________________________________", label_style))
+            story.append(Spacer(1, 2))
+            story.append(Paragraph("Entered in Meter Movement Card<br/>(Installed Meter) ___________________________________________________________________________", label_style))
+            story.append(Spacer(1, 2))
+            story.append(Paragraph("Entered in Meter Movement Card<br/>(Removed Meter) _____________________________________________________________________________", label_style))
+            story.append(Spacer(1, 2))
+            story.append(Paragraph("Changed by ______________________________ Date __________________ Time __________________", label_style))
+            story.append(Spacer(1, 2))
+            story.append(Paragraph("Meter/Card/Cards has/have been duly completed by me and kept with the Meter/Meters In the<br/>Presence of the consumer or his representative Mr _____________________________________________________", label_style))
+            story.append(Spacer(1, 5))
 
+            # Signatures table matching MS Word
             sig_data = [
                 [
-                    Paragraph("________________________________<br/><b>(Consumer Signature)</b>", label_style),
-                    Paragraph("<b>Line Supdt:</b> ________________________  <b>Date:</b> ____________", ParagraphStyle('LS', parent=label_style, alignment=2))
+                    Paragraph("____________________________________<br/>(Consumer Signature)", label_style),
+                    Paragraph("Line Supdt. __________________ &nbsp;Date ____________", ParagraphStyle('LSR', parent=label_style, alignment=2))
                 ]
             ]
-            story.append(Table(sig_data, colWidths=[260, 260]))
-            story.append(Spacer(1, 8))
-            story.append(Paragraph("<b>CHARGE:</b> (In accordance with item 2 of the schedule of general charges, If the meter has been removed or had its Position changed at the request of the consumer the consumer shall be charged at the rate applicable of the time of changed).", ParagraphStyle('Charge', parent=styles['Normal'], fontSize=7, textColor=colors.black)))
+            t_sig = Table(sig_data, colWidths=[260, 263])
+            t_sig.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            story.append(t_sig)
+            story.append(Spacer(1, 4))
+
+            # CHARGE matching MS Word
+            story.append(Paragraph("<b>CHARGE</b>", ParagraphStyle('ChargeH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, alignment=1, spaceAfter=1)))
+            story.append(Paragraph("(In accordance with item 2 of the schedule of general charges, If the meter has been removed or had its Position changed at the request of the consumer the consumer shall be charged at the rate applicable of the time of changed).", ParagraphStyle('ChargeBody', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=8.5, alignment=1)))
 
         doc.build(story)
 
@@ -932,7 +1011,7 @@ class MCODocumentGenerator:
             if cls.convert_docx_to_pdf(temp_docx, out_path):
                 return
         except Exception as e:
-            logger.warning(f"Direct Word conversion for RO MCO failed: {e}")
+            logger.debug(f"Direct Word conversion for RO MCO skipped/failed: {e}")
         finally:
             if os.path.exists(temp_docx):
                 try:

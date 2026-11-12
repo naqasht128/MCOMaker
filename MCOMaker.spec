@@ -30,7 +30,11 @@ a = Analysis(
         'reportlab.lib.styles',
         'reportlab.lib.colors',
         'PIL',
-        'main'
+        'main',
+        'win32com',
+        'win32com.client',
+        'pythoncom',
+        'docx2pdf'
     ],
     hookspath=[],
     hooksconfig={},
