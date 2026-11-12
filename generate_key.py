@@ -19,7 +19,7 @@ from tkinter import messagebox, ttk
 
 import requests
 
-DEFAULT_API_URL = os.environ.get("LICENSE_API_URL", "https://bill-scrapper.vercel.app").rstrip("/")
+DEFAULT_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 DEFAULT_ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
 

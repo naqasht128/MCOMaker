@@ -71,6 +71,7 @@ Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart";
 Filename: "{tmp}\vc_redist.x86.exe"; Parameters: "/install /passive /norestart"; Check: VCRedistNeedsInstallX86; Flags: waituntilterminated; StatusMsg: "Configuring Microsoft Visual C++ Runtime (x86)..."
 #endif
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec; WorkingDir: "{app}"
+Filename: "{app}\{#AppExeName}"; Flags: nowait shellexec; Check: ShouldLaunchSilent; WorkingDir: "{app}"
 
 [Code]
 function SetEnvironmentVariable(lpName, lpValue: string): BOOL;
@@ -81,7 +82,10 @@ var
   Installed: Cardinal;
 begin
   Result := True;
-  if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', Installed) and (Installed = 1) then
+  // Check native 64-bit registry view directly on 64-bit Windows
+  if IsWin64 and RegQueryDWordValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', Installed) and (Installed = 1) then
+    Result := False
+  else if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', Installed) and (Installed = 1) then
     Result := False
   else if RegQueryDWordValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', Installed) and (Installed = 1) then
     Result := False;
@@ -96,6 +100,11 @@ begin
     Result := False
   else if RegQueryDWordValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X86', 'Installed', Installed) and (Installed = 1) then
     Result := False;
+end;
+
+function ShouldLaunchSilent: Boolean;
+begin
+  Result := WizardSilent or (ExpandConstant('{param:AUTOUPDATE|0}') = '1');
 end;
 
 function InitializeSetup(): Boolean;

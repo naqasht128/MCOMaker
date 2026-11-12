@@ -139,16 +139,40 @@ def main():
     update_release_notes(target_ver, message)
 
     print(f"\n[3/5] Git staging and committing...")
-    run_cmd(["git", "add", "main.py", "installer.iss", "RELEASE_NOTES.md"])
+    run_cmd(["git", "add", "."])
     commit_res = run_cmd(["git", "commit", "-m", f"chore(release): v{target_ver} - {message}"], check=False)
     if commit_res.returncode != 0:
         print("  [WARN] No changes to commit or commit already up to date.")
 
     print(f"\n[4/5] Creating and pushing git tag v{target_ver}...")
     run_cmd(["git", "push", "origin", "main"], check=False)
+    run_cmd(["git", "tag", "-d", f"v{target_ver}"], check=False)
     run_cmd(["git", "tag", "-a", f"v{target_ver}", "-m", message])
-    run_cmd(["git", "push", "origin", f"v{target_ver}"])
+    run_cmd(["git", "push", "origin", f"v{target_ver}", "--force"])
     print(f"  [OK] Tag v{target_ver} pushed to GitHub!")
+
+    # Broadcast update directly to Vercel as well
+    api_url = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
+    admin_secret = os.environ.get("ADMIN_SECRET", "TahirNaqash_Secret_2026")
+    try:
+        import requests
+        dl_url = f"https://github.com/naqasht128/MCOMaker/releases/download/v{target_ver}/MCOMaker-Setup.exe"
+        r = requests.post(
+            f"{api_url}/api/admin/broadcast-update",
+            json={
+                "admin_secret": admin_secret,
+                "version": target_ver,
+                "download_url": dl_url,
+                "file_name": "MCOMaker-Setup.exe",
+                "release_notes": message
+            },
+            headers={"x-admin-secret": admin_secret},
+            timeout=8
+        )
+        if r.status_code == 200:
+            print(f"  [OK] Update broadcasted to Vercel licensing API: v{target_ver}")
+    except Exception as e:
+        print(f"  [WARN] Note: Vercel broadcast notification skipped: {e}")
 
     print(f"\n[5/5] Success! GitHub Actions CI/CD has been triggered.")
     print("      Both Windows 10/11 and Windows 7 installers are building in parallel.")

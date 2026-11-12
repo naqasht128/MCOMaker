@@ -54,7 +54,7 @@ from docx.shared import Pt
 APP_NAME = "MCO Maker"
 APP_VERSION = "1.0.0"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
-LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://bill-scrapper.vercel.app").rstrip("/")
+LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 
 # VS Code Dark+ Color Palette
 BG_DARK = "#1e1e1e"
@@ -1019,6 +1019,151 @@ class LicenseGateDialog(tk.Toplevel):
 
 
 # ====================================================================
+# IN-APP AUTO-UPDATE DOWNLOADER & INSTALLER DIALOG
+# ====================================================================
+class UpdateDownloaderDialog(tk.Toplevel):
+    """Modal dialog displaying download progress and applying the update silently."""
+    def __init__(self, parent: tk.Tk, version: str, download_url: str):
+        super().__init__(parent)
+        self.parent = parent
+        self.version = version
+        self.download_url = download_url
+        self.title("Updating MCO Maker")
+        self.geometry("440x190")
+        self.resizable(False, False)
+        self.configure(bg=CARD_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.update_idletasks()
+        set_dark_title_bar(self)
+        self.after(50, lambda: set_dark_title_bar(self))
+
+        self.cancelled = False
+        self._build_ui()
+        threading.Thread(target=self._download_worker, daemon=True).start()
+
+    def _build_ui(self):
+        tk.Label(
+            self, text=f"🚀 Downloading Update (v{self.version})...",
+            font=(UI_FONT, 12, "bold"), fg=TEXT_WHITE, bg=CARD_BG
+        ).pack(anchor="w", padx=20, pady=(16, 4))
+
+        self.lbl_status = tk.Label(
+            self, text="Connecting to update server...", font=(UI_FONT, 9),
+            fg=TEXT_MUTED, bg=CARD_BG
+        )
+        self.lbl_status.pack(anchor="w", padx=20, pady=(0, 10))
+
+        self.prog = ttk.Progressbar(self, mode="determinate")
+        self.prog.pack(fill="x", padx=20, pady=(0, 6))
+
+        self.lbl_details = tk.Label(
+            self, text="0% (0.0 MB)", font=(UI_FONT, 8),
+            fg=TEXT_MUTED, bg=CARD_BG
+        )
+        self.lbl_details.pack(anchor="w", padx=20, pady=(0, 12))
+
+        btn_row = tk.Frame(self, bg=CARD_BG)
+        btn_row.pack(fill="x", padx=20)
+        self.btn_cancel = tk.Button(
+            btn_row, text="Cancel", font=(UI_FONT, 9), fg=TEXT_MAIN,
+            bg=BTN_SEC_BG, activebackground=BTN_SEC_HOVER, relief="flat",
+            padx=12, pady=4, cursor="hand2", command=self._on_cancel
+        )
+        self.btn_cancel.pack(side="right")
+
+    def _on_cancel(self):
+        self.cancelled = True
+        self.destroy()
+
+    def _download_worker(self):
+        temp_dir = Path(tempfile.gettempdir())
+        target_file = temp_dir / f"MCOMaker_Setup_v{self.version}.exe"
+        try:
+            resp = requests.get(self.download_url, stream=True, timeout=20)
+            resp.raise_for_status()
+            total_bytes = int(resp.headers.get("content-length", 0))
+            downloaded = 0
+
+            with open(target_file, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if self.cancelled:
+                        return
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_bytes > 0:
+                            pct = int((downloaded / total_bytes) * 100)
+                            mb_down = downloaded / (1024 * 1024)
+                            mb_tot = total_bytes / (1024 * 1024)
+                            self.after(0, lambda p=pct, d=mb_down, t=mb_tot: self._update_ui(p, f"{p}% ({d:.1f} MB / {t:.1f} MB)"))
+                        else:
+                            mb_down = downloaded / (1024 * 1024)
+                            self.after(0, lambda d=mb_down: self._update_ui(0, f"Downloaded {d:.1f} MB"))
+
+            if self.cancelled:
+                return
+
+            self.after(0, lambda: self._apply_update(str(target_file)))
+        except Exception as e:
+            self.after(0, lambda: self._show_error(str(e)))
+
+    def _update_ui(self, pct: int, details: str):
+        try:
+            self.lbl_status.configure(text="Downloading update package...")
+            self.prog["value"] = pct
+            self.lbl_details.configure(text=details)
+        except Exception:
+            pass
+
+    def _show_error(self, err: str):
+        try:
+            messagebox.showerror("Update Failed", f"Failed to download update:\n\n{err}", parent=self)
+            self.destroy()
+        except Exception:
+            pass
+
+    def _apply_update(self, installer_path: str):
+        try:
+            self.lbl_status.configure(text="Installing update and restarting...")
+            self.prog["value"] = 100
+            self.lbl_details.configure(text="Restarting...")
+        except Exception:
+            pass
+
+        # If running from source, inform user
+        if not getattr(sys, "frozen", False):
+            messagebox.showinfo("Update Downloaded", f"Update downloaded to:\n{installer_path}\n\nPlease run the installer to upgrade.", parent=self)
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer.exe", f"/select,{installer_path}"])
+            self.destroy()
+            return
+
+        # Running compiled EXE: Run Inno Setup silently with auto-update restart
+        clean_env = os.environ.copy()
+        for k in list(clean_env.keys()):
+            if any(k.startswith(p) for p in ["_PYI", "_MEI", "PYTHON", "TCL", "TK"]):
+                clean_env.pop(k, None)
+
+        try:
+            DETACHED_FLAGS = 0x08000000 | 0x00000200
+            subprocess.Popen(
+                [installer_path, "/SILENT", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS", "/AUTOUPDATE=1"],
+                creationflags=DETACHED_FLAGS,
+                close_fds=True,
+                env=clean_env
+            )
+        except Exception:
+            subprocess.Popen([installer_path, "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS", "/AUTOUPDATE=1"], env=clean_env)
+
+        try:
+            self.parent.destroy()
+        except Exception:
+            pass
+        os._exit(0)
+
+
+# ====================================================================
 # MAIN DESKTOP APPLICATION GUI
 # ====================================================================
 class MCOMakerApp(tk.Tk):
@@ -1093,16 +1238,19 @@ class MCOMakerApp(tk.Tk):
         banner.pack(fill="x", side="top", padx=16, pady=(8, 0))
         
         tk.Label(
-            banner, text=f"ℹ New Update Available: MCO Maker v{new_ver}",
+            banner, text=f"🚀 New Update Available: MCO Maker v{new_ver}",
             font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg="#1a314c"
         ).pack(side="left", padx=12, pady=6)
 
         tk.Button(
-            banner, text="⬇ Download Update", font=(UI_FONT, 8, "bold"),
+            banner, text="⬇ Update Now", font=(UI_FONT, 9, "bold"),
             fg=TEXT_WHITE, bg=ACCENT_BLUE, activebackground=ACCENT_BLUE_HOVER,
-            relief="flat", cursor="hand2", padx=8, pady=2,
-            command=lambda: webbrowser.open(url)
-        ).pack(side="right", padx=12)
+            relief="flat", cursor="hand2", padx=12, pady=4,
+            command=lambda: self._start_update_download(new_ver, url)
+        ).pack(side="right", padx=12, pady=4)
+
+    def _start_update_download(self, version: str, url: str):
+        UpdateDownloaderDialog(self, version, url)
 
     def _build_ui(self):
         # Header Bar
@@ -1577,11 +1725,12 @@ class MCOMakerApp(tk.Tk):
                     dl_url = data.get("download_url", "https://github.com/naqasht128/MCOMaker/releases")
                     res = messagebox.askyesno(
                         "Update Available",
-                        f"A new version of MCO Maker (v{latest}) is available!\n\nWould you like to open the download page?",
+                        f"A new version of MCO Maker (v{latest}) is available!\n\nWould you like to download and install the update now?",
                         parent=parent_dlg
                     )
                     if res:
-                        webbrowser.open(dl_url)
+                        parent_dlg.destroy()
+                        self._start_update_download(latest, dl_url)
                     return
         except Exception:
             pass

@@ -150,3 +150,14 @@ jobs:
           draft: false
           body_path: RELEASE_NOTES.md
           generate_release_notes: false
+
+      - name: Broadcast Release Update to Vercel Licensing Server
+        shell: bash
+        run: |
+          TAG="${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.tag_name }}"
+          VER="${TAG#v}"
+          echo "Broadcasting update for v${VER} to Vercel..."
+          curl -s -X POST "https://mcomaker.vercel.app/api/admin/broadcast-update" \
+            -H "Content-Type: application/json" \
+            -H "x-admin-secret: TahirNaqash_Secret_2026" \
+            -d "{\"admin_secret\":\"TahirNaqash_Secret_2026\",\"version\":\"$VER\",\"download_url\":\"https://github.com/naqasht128/MCOMaker/releases/download/$TAG/MCOMaker-Setup.exe\",\"file_name\":\"MCOMaker-Setup.exe\",\"release_notes\":\"Release $TAG\"}"
