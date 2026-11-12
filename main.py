@@ -368,6 +368,19 @@ def smart_load_excel(file_path: str) -> tuple[list[dict], dict]:
 # ====================================================================
 # BILL SCRAPER ENGINE
 # ====================================================================
+def is_network_error(e: Exception) -> bool:
+    """Returns True if the exception was caused by a network disconnection or timeout."""
+    if isinstance(e, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return True
+    err_str = str(e).lower()
+    return any(k in err_str for k in [
+        "getaddrinfo failed", "failed to establish a new connection", "connection refused",
+        "connection reset", "network is unreachable", "connection aborted",
+        "remote end closed connection", "max retries exceeded", "name or service not known",
+        "temporary failure in name resolution", "timed out", "timeout"
+    ])
+
+
 def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk/pescobill") -> dict:
     """Scrapes billing details for a reference number from PITC portal."""
     clean_ac = re.sub(r"\D", "", str(account_no))
@@ -858,17 +871,23 @@ class MCODocumentGenerator:
             r_rem[8].text = ""  # Meter Reading blank
 
         # Table 4: METER INSTALLED
-        # i) Location Code: O, Manfg Code: 12, Meter Code: 002, Multiplying Factor: 1, Meter Reading: 00000, Initial Meter Reading: 00000
+        # i) Location Code: O, Manfg Code: 12, Meter Code: 002, Multiplying Factor: 1, Meter Range: 5, Initial Meter Reading: 00000
         # feeder code remains blank
         if len(doc.tables) >= 5:
             t4 = doc.tables[4]
+            # Ensure Header reads "Meter Range" instead of "Meter Reading"
+            c_hdr = t4.rows[0].cells[9]
+            if "Reading" in c_hdr.text:
+                for r in c_hdr.paragraphs[0].runs:
+                    if "Reading" in r.text:
+                        r.text = r.text.replace("Reading", "Range")
             r_inst = t4.rows[2].cells
             _set_cell_text(r_inst[4], str(rec.get("msn", "")), bold=True, center=True, font_size_pt=11.0)
             _set_cell_text(r_inst[5], "O", bold=True, center=True, font_size_pt=11.0)
             _set_cell_text(r_inst[6], "12", bold=True, center=True, font_size_pt=11.0)
             _set_cell_text(r_inst[7], "002", bold=True, center=True, font_size_pt=11.0)
             _set_cell_text(r_inst[8], "1", bold=True, center=True, font_size_pt=11.0)
-            _set_cell_text(r_inst[9], "00000", bold=True, center=True, font_size_pt=11.0)
+            _set_cell_text(r_inst[9], "5", bold=True, center=True, font_size_pt=11.0)
             _set_cell_text(r_inst[10], "00000", bold=True, center=True, font_size_pt=11.0)
             if len(t4.rows) >= 7:
                 c_feeder = t4.rows[6].cells[1]
@@ -1341,9 +1360,45 @@ class MCOMakerApp(tk.Tk):
         self.col_map: dict = {}
         self.is_scraping = False
         self.is_paused = False
+        self.is_scraped = False
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
         self.pause_event.set()
+
+        # Configure ttk styles
+        style = ttk.Style(self)
+        try:
+            style.theme_use('clam')
+        except Exception:
+            pass
+
+        # Progress bar: Green during scraping, White when completed
+        style.configure(
+            "Horizontal.TProgressbar",
+            background=ACCENT_GREEN,
+            troughcolor="#252526",
+            bordercolor="#252526",
+            lightcolor=ACCENT_GREEN,
+            darkcolor=ACCENT_GREEN,
+            borderwidth=0
+        )
+        style.configure(
+            "White.Horizontal.TProgressbar",
+            background="#ffffff",
+            troughcolor="#252526",
+            bordercolor="#252526",
+            lightcolor="#ffffff",
+            darkcolor="#ffffff",
+            borderwidth=0
+        )
+        style.configure(
+            "Vertical.TScrollbar",
+            background="#424242",
+            troughcolor="#1e1e1e",
+            bordercolor="#1e1e1e",
+            arrowcolor="#cccccc",
+            relief="flat"
+        )
 
         self.temp_cache_file = get_temp_cache_dir() / "scraped_records.json"
 
@@ -1482,7 +1537,7 @@ class MCOMakerApp(tk.Tk):
         ).pack(side="left")
 
         self.mco_status_hint = tk.Label(
-            mco_header_row, text="— (Buttons activate after information is fetched)",
+            mco_header_row, text='— (Click "Start Scraping" first)',
             font=(UI_FONT, 8, "italic"), fg=TEXT_MUTED, bg=CARD_BG
         )
         self.mco_status_hint.pack(side="left", padx=8)
@@ -1492,17 +1547,17 @@ class MCOMakerApp(tk.Tk):
 
         self.btn_sub_div = tk.Button(
             mco_btn_row, text="🏢  For Sub Division", font=(UI_FONT, 10, "bold"),
-            fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground=ACCENT_BLUE_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=18, pady=7,
-            command=lambda: self._generate_mco("sub_division"), state="disabled"
+            fg=TEXT_WHITE, bg=ACCENT_BLUE, activebackground=ACCENT_BLUE_HOVER,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=18, pady=7,
+            command=lambda: self._generate_mco("sub_division")
         )
         self.btn_sub_div.pack(side="left", padx=(0, 10))
 
         self.btn_ro_office = tk.Button(
             mco_btn_row, text="🏛  For RO Office", font=(UI_FONT, 10, "bold"),
-            fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground="#7a4cc7",
-            activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=18, pady=7,
-            command=lambda: self._generate_mco("ro_office"), state="disabled"
+            fg=TEXT_WHITE, bg="#6f42c1", activebackground="#7a4cc7",
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=18, pady=7,
+            command=lambda: self._generate_mco("ro_office")
         )
         self.btn_ro_office.pack(side="left")
 
@@ -1561,6 +1616,7 @@ class MCOMakerApp(tk.Tk):
             relief="flat", wrap="word", padx=8, pady=6, state="disabled"
         )
         self.log_text.tag_configure("ok", foreground="#4ec9b0")
+        self.log_text.tag_configure("green", foreground="#3fb950")
         self.log_text.tag_configure("err", foreground="#f44747")
         self.log_text.tag_configure("blue", foreground="#4daafc")
         self.log_text.pack(side="left", fill="both", expand=True)
@@ -1600,6 +1656,8 @@ class MCOMakerApp(tk.Tk):
             records, col_map = smart_load_excel(f)
             self.records = records
             self.col_map = col_map
+            self.is_scraped = False
+            self._disable_mco_buttons()
             count = len(records)
             ref_str = f"{count} Ref No found" if count == 1 else f"{count} Ref Nos found"
             if count == 0:
@@ -1617,20 +1675,55 @@ class MCOMakerApp(tk.Tk):
             self.btn_start.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
             messagebox.showerror("File Error", f"Could not load Excel file:\n\n{e}")
 
+    def _save_cache(self):
+        try:
+            if self.records:
+                self.temp_cache_file.write_text(json.dumps(self.records, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _is_record_fetched(self, rec: dict) -> bool:
+        if not rec or not isinstance(rec, dict):
+            return False
+        if rec.get("_fetched") is True:
+            return True
+        if rec.get("name") or rec.get("sub_division") or rec.get("is_defective") or rec.get("is_replaced"):
+            return True
+        return False
+
+    def _all_records_fetched(self) -> bool:
+        if not self.records:
+            return False
+        return all(self._is_record_fetched(r) for r in self.records)
+
     def _check_existing_cache(self):
         if self.temp_cache_file.exists():
             try:
                 data = json.loads(self.temp_cache_file.read_text(encoding="utf-8"))
                 if data and isinstance(data, list) and len(data) > 0:
                     self.records = data
-                    self._enable_mco_buttons(f"Cached {len(data)} Bills which was fetched earlier")
-                    self.info_summary_var.set(f"✔ Restored {len(data)} bills from local cache. Ready to generate MCOs.")
-                    self.info_lbl.configure(fg="#3fb950")
-                    self._log(f'Local cache restored: {len(data)} bills ready for MCO generation.', tag="ok")
+                    total = len(data)
+                    fetched = sum(1 for r in data if self._is_record_fetched(r))
+                    if fetched == total:
+                        self.is_scraped = True
+                        self._enable_mco_buttons(f"Cached {total} Bills which was fetched earlier")
+                        self.info_summary_var.set(f"✔ Restored {total} bills from local cache. Ready to generate MCOs.")
+                        self.info_lbl.configure(fg="#3fb950")
+                        self._log(f'Local cache restored: {total} bills ready for MCO generation.', tag="ok")
+                        self.progress_bar.configure(style="White.Horizontal.TProgressbar", maximum=total, value=total)
+                    else:
+                        self.is_scraped = False
+                        self._disable_mco_buttons()
+                        self.info_summary_var.set(f"⚠ Cache has {fetched}/{total} bills fetched. Click 'Start Scraping' to complete.")
+                        self.info_lbl.configure(fg="#f44747")
+                        self._log(f'Local cache restored: {fetched}/{total} bills fetched. Click "Start Scraping" to continue.', tag="err")
+                        self.progress_bar.configure(style="Horizontal.TProgressbar", maximum=total, value=fetched)
+                        self.btn_start.configure(state="normal", bg=ACCENT_GREEN, fg=TEXT_WHITE, cursor="hand2")
             except Exception:
                 pass
 
     def _enable_mco_buttons(self, badge_text: str = "Information Fetched"):
+        self.is_scraped = True
         # Display colored box above log
         try:
             self.status_box.pack(fill="x", padx=14, pady=(0, 4), before=self.log_frame)
@@ -1643,15 +1736,16 @@ class MCOMakerApp(tk.Tk):
         self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
 
     def _disable_mco_buttons(self):
+        self.is_scraped = False
         try:
             self.status_box.pack_forget()
         except Exception:
             pass
         self.status_badge.configure(text="", bg=CARD_BG)
         self.status_box.configure(bg=CARD_BG)
-        self.mco_status_hint.configure(text="— (Buttons activate after information is fetched)", fg=TEXT_MUTED)
-        self.btn_sub_div.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
-        self.btn_ro_office.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
+        self.mco_status_hint.configure(text='— (Click "Start Scraping" first)', fg=TEXT_MUTED)
+        self.btn_sub_div.configure(state="normal", bg=ACCENT_BLUE, fg=TEXT_WHITE, cursor="hand2")
+        self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
 
     def _toggle_pause(self):
         if not self.is_scraping:
@@ -1673,22 +1767,37 @@ class MCOMakerApp(tk.Tk):
 
     def _start_scraping(self):
         fpath = self.file_path_var.get().strip()
-        if not fpath:
+        if not fpath and not self.records:
             messagebox.showwarning("Please Select Excel", "Please select an Input Excel file first before scraping.")
             return
 
-        try:
-            self.records, self.col_map = smart_load_excel(fpath)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to parse Excel file:\n\n{e}")
-            return
+        # If records aren't loaded in memory yet, load from fpath
+        if not self.records and fpath:
+            try:
+                self.records, self.col_map = smart_load_excel(fpath)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to parse Excel file:\n\n{e}")
+                return
 
         total = len(self.records)
         if total == 0:
             messagebox.showwarning("Empty Excel", "No reference numbers found in Column A of the selected Excel file.")
             return
 
-        self._clear_log()
+        # Determine start index and re-verify last fetched Ref No as requested
+        fetched_indices = [i for i, r in enumerate(self.records) if self._is_record_fetched(r)]
+        if len(fetched_indices) == 0:
+            start_idx = 0
+            self._clear_log()
+        elif len(fetched_indices) == total:
+            start_idx = total - 1
+            last_ac = self.records[start_idx].get("reference", "")
+            self._log(f"All records previously fetched. Re-verifying last Ref No ({last_ac})...", tag="ok")
+        else:
+            start_idx = fetched_indices[-1]
+            last_ac = self.records[start_idx].get("reference", "")
+            self._log(f"Resuming: Re-verifying last fetched Ref No ({last_ac}) at {start_idx + 1}/{total}...", tag="ok")
+
         self._disable_mco_buttons()
 
         self.is_scraping = True
@@ -1699,63 +1808,131 @@ class MCOMakerApp(tk.Tk):
         self.btn_start.configure(state="disabled")
         self.btn_pause.configure(state="normal", text="⏸ Pause")
         self.btn_stop.configure(state="normal")
-        self.progress_bar.configure(maximum=total, value=0)
+        self.progress_bar.configure(style="Horizontal.TProgressbar", maximum=total, value=start_idx)
 
-        threading.Thread(target=self._scraping_worker, daemon=True).start()
+        threading.Thread(target=lambda: self._scraping_worker(start_idx), daemon=True).start()
 
-    def _scraping_worker(self):
+    def _scraping_worker(self, start_idx: int = 0):
         total = len(self.records)
-        cached_list = []
 
-        for idx, rec in enumerate(self.records, 1):
+        for idx in range(start_idx, total):
             if self.stop_event.is_set():
                 break
 
             self.pause_event.wait()
+            if self.stop_event.is_set():
+                break
 
+            rec = self.records[idx]
             ac_no = rec.get("reference", "")
-            try:
-                bill_data = scrape_pesco_bill(ac_no)
-                rec.update(bill_data)
-                # Keep original excel overrides if present
-                if rec.get("msn"): bill_data["msn"] = rec["msn"]
-                if rec.get("sim_no"): bill_data["sim_no"] = rec["sim_no"]
-                if rec.get("sim_id"): bill_data["sim_id"] = rec["sim_id"]
-                if rec.get("date"): bill_data["date"] = rec["date"]
-                if rec.get("telco"): bill_data["telco"] = rec["telco"]
-                if rec.get("sco_no"): bill_data["sco_no"] = rec["sco_no"]
-                
-                cached_list.append(rec)
-                if bill_data.get("is_defective"):
-                    self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Defective"', tag="blue"))
-                elif bill_data.get("is_replaced"):
-                    self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Already replaced in previous month"', tag="err"))
-                else:
-                    self.after(0, lambda i=idx, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
-            except Exception as e:
-                err_str = str(e).strip()
-                if "not found" in err_str.lower() or "no bill" in err_str.lower():
-                    status_msg = '"Bill Not Found"'
-                elif "timeout" in err_str.lower():
-                    status_msg = '"Connection Timeout"'
-                elif "form" in err_str.lower() or "unavailable" in err_str.lower():
-                    status_msg = '"Portal Unavailable"'
-                else:
-                    status_msg = f'"{err_str}"'
 
-                self.after(0, lambda i=idx, t=total, ac=ac_no, msg=status_msg: self._log(f'{i}/{t}: {ac}  {msg}', tag="err"))
-                cached_list.append(rec)
+            # Retry loop for internet disconnection
+            while not self.stop_event.is_set():
+                self.pause_event.wait()
+                if self.stop_event.is_set():
+                    break
 
-            self.after(0, lambda i=idx: self.progress_bar.configure(value=i))
-            time.sleep(0.5)
+                try:
+                    bill_data = scrape_pesco_bill(ac_no)
+                    rec.update(bill_data)
+                    rec["_fetched"] = True
+                    # Keep original excel overrides if present
+                    if rec.get("msn"): bill_data["msn"] = rec["msn"]
+                    if rec.get("sim_no"): bill_data["sim_no"] = rec["sim_no"]
+                    if rec.get("sim_id"): bill_data["sim_id"] = rec["sim_id"]
+                    if rec.get("date"): bill_data["date"] = rec["date"]
+                    if rec.get("telco"): bill_data["telco"] = rec["telco"]
+                    if rec.get("sco_no"): bill_data["sco_no"] = rec["sco_no"]
 
-        # Save to local temporary cache
-        try:
-            self.temp_cache_file.write_text(json.dumps(cached_list, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+                    self._save_cache()
 
-        self.records = cached_list
+                    if bill_data.get("is_defective"):
+                        self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Defective"', tag="blue"))
+                    elif bill_data.get("is_replaced"):
+                        self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Already replaced in previous month"', tag="err"))
+                    else:
+                        self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
+
+                    self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
+                    time.sleep(0.5)
+                    break
+
+                except Exception as e:
+                    if is_network_error(e):
+                        # Save current cache immediately
+                        self._save_cache()
+                        self.after(0, lambda ac=ac_no: self._log(f'Internet disconnected while fetching {ac}. Retrying to reconnect... (Press Pause or Stop to cancel)', tag="err"))
+
+                        reconnected = False
+                        while not self.stop_event.is_set():
+                            self.pause_event.wait()
+                            if self.stop_event.is_set():
+                                break
+
+                            for _ in range(8):
+                                if self.stop_event.is_set() or not self.pause_event.is_set():
+                                    break
+                                time.sleep(0.5)
+
+                            if self.stop_event.is_set():
+                                break
+                            self.pause_event.wait()
+                            if self.stop_event.is_set():
+                                break
+
+                            try:
+                                bill_data = scrape_pesco_bill(ac_no)
+                                rec.update(bill_data)
+                                rec["_fetched"] = True
+                                if rec.get("msn"): bill_data["msn"] = rec["msn"]
+                                if rec.get("sim_no"): bill_data["sim_no"] = rec["sim_no"]
+                                if rec.get("sim_id"): bill_data["sim_id"] = rec["sim_id"]
+                                if rec.get("date"): bill_data["date"] = rec["date"]
+                                if rec.get("telco"): bill_data["telco"] = rec["telco"]
+                                if rec.get("sco_no"): bill_data["sco_no"] = rec["sco_no"]
+
+                                self._save_cache()
+                                self.after(0, lambda: self._log("Internet restored! Resuming scraping...", tag="green"))
+
+                                if bill_data.get("is_defective"):
+                                    self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Defective"', tag="blue"))
+                                elif bill_data.get("is_replaced"):
+                                    self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Already replaced in previous month"', tag="err"))
+                                else:
+                                    self.after(0, lambda i=idx+1, t=total, ac=ac_no: self._log(f'{i}/{t}: {ac}  "Information from Bill fetched"', tag="ok"))
+
+                                self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
+                                time.sleep(0.5)
+                                reconnected = True
+                                break
+                            except Exception as retry_err:
+                                if not is_network_error(retry_err):
+                                    e = retry_err
+                                    break
+                                self._save_cache()
+
+                        if reconnected:
+                            break
+                        if self.stop_event.is_set():
+                            break
+                    else:
+                        err_str = str(e).strip()
+                        if "not found" in err_str.lower() or "no bill" in err_str.lower():
+                            status_msg = '"Bill Not Found"'
+                            rec["_not_found"] = True
+                        elif "form" in err_str.lower() or "unavailable" in err_str.lower():
+                            status_msg = '"Portal Unavailable"'
+                        else:
+                            status_msg = f'"{err_str}"'
+
+                        rec["_fetched"] = True
+                        self._save_cache()
+                        self.after(0, lambda i=idx+1, t=total, ac=ac_no, msg=status_msg: self._log(f'{i}/{t}: {ac}  {msg}', tag="err"))
+                        self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
+                        time.sleep(0.5)
+                        break
+
+        self._save_cache()
         self.after(0, self._on_scraping_finished)
 
     def _on_scraping_finished(self):
@@ -1764,15 +1941,43 @@ class MCOMakerApp(tk.Tk):
         self.btn_pause.configure(state="disabled")
         self.btn_stop.configure(state="disabled")
 
-        if not self.stop_event.is_set() and self.records:
+        if not self.stop_event.is_set() and self._all_records_fetched():
+            self.progress_bar.configure(style="White.Horizontal.TProgressbar")
+            self._log("Scraping Completed", tag="green")
             self._enable_mco_buttons("Information Fetched")
+        else:
+            fetched_count = sum(1 for r in self.records if self._is_record_fetched(r))
+            total_count = len(self.records)
+            if self.stop_event.is_set():
+                self._log(f"Scraping stopped by user. ({fetched_count}/{total_count} bills saved to cache).", tag="err")
+            elif fetched_count < total_count:
+                self._log(f"Scraping incomplete ({fetched_count}/{total_count} bills). Click 'Start Scraping' to resume.", tag="err")
 
     # ====================================================================
     # MAKE MCO GENERATION (MS WORD)
     # ====================================================================
     def _generate_mco(self, mco_type: str):
+        if self.is_scraping:
+            messagebox.showwarning("Notice", "Scraping is in progress. Please wait until scraping is completed.")
+            return
+
         if not self.records:
-            messagebox.showwarning("No Data", "No records available to generate MCO.")
+            self._log('Click "Start Scraping" First', tag="err")
+            messagebox.showwarning("Notice", 'Click "Start Scraping" First')
+            return
+
+        fetched_count = sum(1 for r in self.records if self._is_record_fetched(r))
+        total_count = len(self.records)
+
+        if fetched_count == 0:
+            self._log('Click "Start Scraping" First', tag="err")
+            messagebox.showwarning("Notice", 'Click "Start Scraping" First')
+            return
+
+        if fetched_count < total_count:
+            msg = "Excel is not fetched completely, Please Click Start Scraping to Complete the Excel First"
+            self._log(msg, tag="err")
+            messagebox.showwarning("Incomplete Data", msg)
             return
 
         type_name = "Sub_Division_MCO" if mco_type == "sub_division" else "RO_Office_MCO"
