@@ -1,3 +1,3 @@
-# Release v1.0.4
+# Release v1.0.5
 
-Dynamic pricing sync and updated subscription rates (6mo: Rs. 3000, 1yr: Rs. 5000)
+Remove hardcoded pricing from UI and launch on website

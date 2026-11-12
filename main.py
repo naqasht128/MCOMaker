@@ -79,7 +79,7 @@ from docx.shared import Pt
 
 # Application Metadata
 APP_NAME = "MCO Maker"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
 LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 
@@ -1110,26 +1110,23 @@ class LicenseGateDialog(tk.Toplevel):
             command=self._copy_hwid, cursor="hand2"
         ).pack(side="left", padx=(8, 0))
 
-        # Pricing Cards Box
-        price_box = tk.Frame(self, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        price_box.pack(fill="x", padx=28, pady=(8, 4))
+        # Website & Pricing link
+        web_row = tk.Frame(self, bg=CARD_BG)
+        web_row.pack(fill="x", padx=28, pady=(4, 0))
 
-        tk.Label(
-            price_box, text="Available Subscription Plans:",
-            font=(UI_FONT, 8, "bold"), fg=TEXT_WHITE, bg=INPUT_BG
-        ).pack(anchor="w", padx=12, pady=(6, 2))
-
-        p_row = tk.Frame(price_box, bg=INPUT_BG)
-        p_row.pack(fill="x", padx=12, pady=(0, 6))
-
-        self.lbl_plans = tk.Label(
-            p_row, text="• 6 Months: Rs. 3,000 (180 Days, 1 PC)\n• 1 Year: Rs. 5,000 (365 Days, 1 PC) [Recommended]",
-            font=(UI_FONT, 8), fg="#4ec9b0", bg=INPUT_BG, justify="left"
-        )
-        self.lbl_plans.pack(side="left")
-
-        # Dynamically fetch updated plans from licensing server
-        threading.Thread(target=self._fetch_dynamic_plans, daemon=True).start()
+        tk.Button(
+            web_row,
+            text="🌐 View Official Plans & Pricing on Website →",
+            font=(UI_FONT, 8, "underline"),
+            fg="#58a6ff",
+            bg=CARD_BG,
+            activeforeground="#79c0ff",
+            activebackground=CARD_BG,
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            command=lambda: webbrowser.open("https://pit-csuite.vercel.app/details.html?tool=mco-maker"),
+        ).pack(side="left")
 
         # Serial Key Entry
         tk.Label(
