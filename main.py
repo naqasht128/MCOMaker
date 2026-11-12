@@ -42,6 +42,31 @@ try:
 except ImportError:
     winreg = None
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
+
+def play_notification_sound():
+    """Plays a system notification sound when scraping finishes."""
+    try:
+        if sys.platform == "win32":
+            try:
+                import winsound
+                winsound.PlaySound("SystemNotification", winsound.SND_ALIAS | winsound.SND_ASYNC)
+            except Exception:
+                try:
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                except Exception:
+                    pass
+        elif sys.platform == "darwin":
+            os.system("afplay /System/Library/Sounds/Glass.aiff &")
+        else:
+            print("\a", end="", flush=True)
+    except Exception:
+        pass
+
 import requests
 from bs4 import BeautifulSoup
 import openpyxl
@@ -1859,6 +1884,11 @@ class MCOMakerApp(tk.Tk):
         self.btn_stop.configure(state="normal")
         self.progress_bar.configure(style="Horizontal.TProgressbar", maximum=total, value=start_idx)
 
+        # Disable MCO generation buttons while scraping
+        self.btn_sub_div.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
+        self.btn_ro_office.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
+        self.mco_status_hint.configure(text="— (Scraping in progress...)", fg=TEXT_MUTED)
+
         threading.Thread(target=lambda: self._scraping_worker(start_idx), daemon=True).start()
 
     def _scraping_worker(self, start_idx: int = 0):
@@ -2021,6 +2051,7 @@ class MCOMakerApp(tk.Tk):
             self.progress_bar.configure(style="White.Horizontal.TProgressbar")
             self._log("Scrapping completed. Click the buttons below for generating MCOs.", tag="green")
             self._enable_mco_buttons("Scrapping completed. Click the buttons below for generating MCOs.")
+            play_notification_sound()
         else:
             fetched_count = sum(1 for r in self.records if self._is_record_fetched(r))
             total_count = len(self.records)
@@ -2028,6 +2059,7 @@ class MCOMakerApp(tk.Tk):
                 self._log(f"Scraping stopped by user. ({fetched_count}/{total_count} bills saved to cache).", tag="err")
             elif fetched_count < total_count:
                 self._log(f"Scraping incomplete ({fetched_count}/{total_count} bills). Click 'Start Scraping' to resume.", tag="err")
+            self._disable_mco_buttons()
 
     # ====================================================================
     # EXPORT SCRAPING LOGS TO EXCEL

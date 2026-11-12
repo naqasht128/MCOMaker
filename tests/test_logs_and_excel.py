@@ -175,6 +175,43 @@ class TestLogsAndExcel(unittest.TestCase):
             app.destroy()
         print("Log window formatting & button tests passed!")
 
+    def test_mco_buttons_disabled_during_scraping_and_sound(self):
+        with patch.object(main.LicenseManager, "is_locally_active", return_value=True), \
+             patch.object(main.MCOMakerApp, "_bg_heartbeat"), \
+             patch.object(main.MCOMakerApp, "_bg_update_check"):
+            app = MCOMakerApp()
+            app.withdraw()
+
+            # Set sample records
+            app.records = [
+                {"reference": "19269310053300", "_fetched": True, "name": "TEST"}
+            ]
+
+            # Simulate scraping started
+            with patch("threading.Thread"):
+                app._start_scraping()
+
+            # Verify MCO generation buttons are disabled during scraping
+            self.assertEqual(str(app.btn_sub_div.cget("state")), "disabled")
+            self.assertEqual(str(app.btn_ro_office.cget("state")), "disabled")
+            self.assertEqual(app.btn_sub_div.cget("bg"), main.BTN_DISABLED_BG)
+            self.assertEqual(app.btn_ro_office.cget("bg"), main.BTN_DISABLED_BG)
+            self.assertIn("Scraping in progress", app.mco_status_hint.cget("text"))
+
+            # Simulate scraping finished
+            with patch("main.play_notification_sound") as mock_sound:
+                app._on_scraping_finished()
+                mock_sound.assert_called_once()
+
+            # Verify MCO buttons are now re-enabled
+            self.assertEqual(str(app.btn_sub_div.cget("state")), "normal")
+            self.assertEqual(str(app.btn_ro_office.cget("state")), "normal")
+            self.assertEqual(app.btn_sub_div.cget("bg"), main.ACCENT_BLUE)
+            self.assertEqual(app.btn_ro_office.cget("bg"), "#6f42c1")
+
+            app.destroy()
+        print("MCO buttons disabling and notification sound tests passed!")
+
 
 if __name__ == "__main__":
     unittest.main()
