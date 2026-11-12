@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import platform
 import queue
@@ -33,6 +34,8 @@ import webbrowser
 from datetime import datetime, date, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+logger = logging.getLogger("MCOMaker")
 
 try:
     import winreg
@@ -713,26 +716,44 @@ class MCODocumentGenerator:
         abs_pdf = os.path.abspath(pdf_path)
 
         # 1. Try direct Word COM automation
+        word = None
+        co_init = False
         try:
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+                co_init = True
+            except Exception:
+                pass
             import win32com.client
             word = win32com.client.DispatchEx("Word.Application")
             word.Visible = False
             word.DisplayAlerts = False
-            try:
-                doc = word.Documents.Open(abs_docx, ReadOnly=True)
-                doc.SaveAs(abs_pdf, FileFormat=17)  # 17 = wdFormatPDF
-                doc.Close(False)
+            doc = word.Documents.Open(abs_docx, ReadOnly=True)
+            doc.SaveAs(abs_pdf, FileFormat=17)  # 17 = wdFormatPDF
+            doc.Close(False)
+            if os.path.exists(abs_pdf) and os.path.getsize(abs_pdf) > 0:
                 return True
-            finally:
-                word.Quit()
         except Exception as e:
             logger.warning(f"Word COM automation failed: {e}")
+        finally:
+            if word is not None:
+                try:
+                    word.Quit()
+                except Exception:
+                    pass
+            if co_init:
+                try:
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
         # 2. Try docx2pdf library
         try:
             from docx2pdf import convert
             convert(abs_docx, abs_pdf)
-            return True
+            if os.path.exists(abs_pdf) and os.path.getsize(abs_pdf) > 0:
+                return True
         except Exception as e:
             logger.warning(f"docx2pdf conversion failed: {e}")
 
