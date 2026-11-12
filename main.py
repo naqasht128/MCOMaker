@@ -1546,7 +1546,7 @@ class MCOMakerApp(tk.Tk):
         mco_btn_row.pack(fill="x", padx=14, pady=(0, 10))
 
         self.btn_sub_div = tk.Button(
-            mco_btn_row, text="🏢  For Sub Division", font=(UI_FONT, 10, "bold"),
+            mco_btn_row, text="🏢  MCO of SDO", font=(UI_FONT, 10, "bold"),
             fg=TEXT_WHITE, bg=ACCENT_BLUE, activebackground=ACCENT_BLUE_HOVER,
             activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=18, pady=7,
             command=lambda: self._generate_mco("sub_division")
@@ -1554,7 +1554,7 @@ class MCOMakerApp(tk.Tk):
         self.btn_sub_div.pack(side="left", padx=(0, 10))
 
         self.btn_ro_office = tk.Button(
-            mco_btn_row, text="🏛  For RO Office", font=(UI_FONT, 10, "bold"),
+            mco_btn_row, text="🏛  MCO of RO", font=(UI_FONT, 10, "bold"),
             fg=TEXT_WHITE, bg="#6f42c1", activebackground="#7a4cc7",
             activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=18, pady=7,
             command=lambda: self._generate_mco("ro_office")
@@ -1598,14 +1598,16 @@ class MCOMakerApp(tk.Tk):
         self.progress_bar = ttk.Progressbar(card_scrape, orient="horizontal", mode="determinate")
         self.progress_bar.pack(fill="x", padx=14, pady=(0, 6))
 
-        # Colored Status Box Above Log Screen (Shows "Information Fetched" once finished)
+        # Centered Status Badge (Modern pill badge, NOT a progress bar)
         self.status_box = tk.Frame(card_scrape, bg=CARD_BG)
 
         self.status_badge = tk.Label(
             self.status_box, text="",
-            font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=CARD_BG, pady=3
+            font=(UI_FONT, 9, "bold"), fg="#3fb950", bg="#162a1d",
+            padx=16, pady=3, relief="flat", highlightthickness=1,
+            highlightbackground="#238636"
         )
-        self.status_badge.pack(fill="x")
+        self.status_badge.pack(anchor="center")
 
         # Clean Log Window
         self.log_frame = tk.Frame(card_scrape, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
@@ -1710,27 +1712,31 @@ class MCOMakerApp(tk.Tk):
                         self.info_summary_var.set(f"✔ Restored {total} bills from local cache. Ready to generate MCOs.")
                         self.info_lbl.configure(fg="#3fb950")
                         self._log(f'Local cache restored: {total} bills ready for MCO generation.', tag="ok")
-                        self.progress_bar.configure(style="White.Horizontal.TProgressbar", maximum=total, value=total)
+                        self.progress_bar.configure(style="Horizontal.TProgressbar", maximum=total, value=0)
                     else:
                         self.is_scraped = False
                         self._disable_mco_buttons()
                         self.info_summary_var.set(f"⚠ Cache has {fetched}/{total} bills fetched. Click 'Start Scraping' to complete.")
                         self.info_lbl.configure(fg="#f44747")
                         self._log(f'Local cache restored: {fetched}/{total} bills fetched. Click "Start Scraping" to continue.', tag="err")
-                        self.progress_bar.configure(style="Horizontal.TProgressbar", maximum=total, value=fetched)
+                        self.progress_bar.configure(style="Horizontal.TProgressbar", maximum=total, value=0)
                         self.btn_start.configure(state="normal", bg=ACCENT_GREEN, fg=TEXT_WHITE, cursor="hand2")
             except Exception:
                 pass
 
     def _enable_mco_buttons(self, badge_text: str = "Information Fetched"):
         self.is_scraped = True
-        # Display colored box above log
         try:
-            self.status_box.pack(fill="x", padx=14, pady=(0, 4), before=self.log_frame)
+            self.status_box.pack(fill="x", padx=14, pady=(2, 6), before=self.log_frame)
         except Exception:
-            self.status_box.pack(fill="x", padx=14, pady=(0, 4))
-        self.status_box.configure(bg=ACCENT_GREEN)
-        self.status_badge.configure(text=f"✔  {badge_text}", bg=ACCENT_GREEN)
+            self.status_box.pack(fill="x", padx=14, pady=(2, 6))
+        self.status_box.configure(bg=CARD_BG)
+        self.status_badge.configure(
+            text=f"✔  {badge_text}",
+            fg="#3fb950",
+            bg="#162a1d",
+            highlightbackground="#238636"
+        )
         self.mco_status_hint.configure(text="✔ Ready to generate MS Word MCO", fg="#89d185")
         self.btn_sub_div.configure(state="normal", bg=ACCENT_BLUE, fg=TEXT_WHITE, cursor="hand2")
         self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
@@ -1741,8 +1747,7 @@ class MCOMakerApp(tk.Tk):
             self.status_box.pack_forget()
         except Exception:
             pass
-        self.status_badge.configure(text="", bg=CARD_BG)
-        self.status_box.configure(bg=CARD_BG)
+        self.status_badge.configure(text="")
         self.mco_status_hint.configure(text='— (Click "Start Scraping" first)', fg=TEXT_MUTED)
         self.btn_sub_div.configure(state="normal", bg=ACCENT_BLUE, fg=TEXT_WHITE, cursor="hand2")
         self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
@@ -1943,8 +1948,8 @@ class MCOMakerApp(tk.Tk):
 
         if not self.stop_event.is_set() and self._all_records_fetched():
             self.progress_bar.configure(style="White.Horizontal.TProgressbar")
-            self._log("Scraping Completed", tag="green")
-            self._enable_mco_buttons("Information Fetched")
+            self._log("Scrapping completed. Click the buttons below for generating MCOs.", tag="green")
+            self._enable_mco_buttons("Scrapping completed. Click the buttons below for generating MCOs.")
         else:
             fetched_count = sum(1 for r in self.records if self._is_record_fetched(r))
             total_count = len(self.records)
