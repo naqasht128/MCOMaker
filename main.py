@@ -2092,22 +2092,7 @@ class MCOMakerApp(tk.Tk):
                 "Sr #",
                 "Reference No",
                 "Scraping Status",
-                "Remarks",
-                "Consumer Name",
-                "Address",
-                "Tariff",
-                "Sub Division",
-                "Bill Status",
-                "Meter Range",
-                "Present Reading",
-                "Previous Reading",
-                "Units",
-                "Installed MSN",
-                "SIM No",
-                "SIM ID",
-                "Installation Date",
-                "Telco",
-                "SCO / MCO No"
+                "Remarks"
             ]
             ws.append(headers)
 
@@ -2164,22 +2149,7 @@ class MCOMakerApp(tk.Tk):
                     idx,
                     ac_no,
                     status_str,
-                    remarks_str,
-                    rec.get("name", ""),
-                    rec.get("address", ""),
-                    rec.get("tariff", ""),
-                    rec.get("sub_division", ""),
-                    rec.get("status", ""),
-                    5,
-                    rec.get("present_reading", ""),
-                    rec.get("prev_reading", ""),
-                    rec.get("units", ""),
-                    rec.get("msn", ""),
-                    rec.get("sim_no", ""),
-                    rec.get("sim_id", ""),
-                    rec.get("date", ""),
-                    rec.get("telco", ""),
-                    rec.get("sco_no", "")
+                    remarks_str
                 ]
                 ws.append(row_values)
                 row_idx = idx + 1
@@ -2190,9 +2160,9 @@ class MCOMakerApp(tk.Tk):
                     cell.font = data_font
                     cell.border = thin_border
 
-                    if col_idx in (1, 3, 10, 11, 12, 13, 17):
+                    if col_idx in (1, 3):
                         cell.alignment = center_align
-                    elif col_idx in (2, 14, 15, 16):
+                    elif col_idx == 2:
                         cell.number_format = "@"
                         cell.alignment = center_align
                     else:
@@ -2216,7 +2186,7 @@ class MCOMakerApp(tk.Tk):
                     val_str = str(cell.value or "")
                     if len(val_str) > max_len:
                         max_len = len(val_str)
-                ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+                ws.column_dimensions[col_letter].width = max(max_len + 4, 14)
 
             ws.freeze_panes = "A2"
             ws.auto_filter.ref = ws.dimensions

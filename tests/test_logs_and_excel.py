@@ -97,22 +97,7 @@ class TestLogsAndExcel(unittest.TestCase):
             "Sr #",
             "Reference No",
             "Scraping Status",
-            "Remarks",
-            "Consumer Name",
-            "Address",
-            "Tariff",
-            "Sub Division",
-            "Bill Status",
-            "Meter Range",
-            "Present Reading",
-            "Previous Reading",
-            "Units",
-            "Installed MSN",
-            "SIM No",
-            "SIM ID",
-            "Installation Date",
-            "Telco",
-            "SCO / MCO No"
+            "Remarks"
         ]
         self.assertEqual(headers, expected_headers)
 
@@ -121,14 +106,12 @@ class TestLogsAndExcel(unittest.TestCase):
         self.assertEqual(str(ws.cell(row=2, column=2).value), "19269310053300")
         self.assertEqual(ws.cell(row=2, column=3).value, "Fetched")
         self.assertEqual(ws.cell(row=2, column=4).value, "Already replaced in previous month")
-        self.assertEqual(ws.cell(row=2, column=10).value, 5) # Meter Range is 5
 
         # Check Row 3 (Defective)
         self.assertEqual(ws.cell(row=3, column=1).value, 2)
         self.assertEqual(str(ws.cell(row=3, column=2).value), "03262320230213")
         self.assertEqual(ws.cell(row=3, column=3).value, "Fetched")
         self.assertEqual(ws.cell(row=3, column=4).value, "Defective")
-        self.assertEqual(ws.cell(row=3, column=10).value, 5)
 
         # Check Row 4 (Error)
         self.assertEqual(ws.cell(row=4, column=1).value, 3)
