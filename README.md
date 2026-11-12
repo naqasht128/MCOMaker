@@ -19,7 +19,7 @@ With **MCO Maker**:
    - **Present Meter Reading (Final Reading)**
    - **Consumer Tariff Code**
 3. Caches scraped data locally in `%LOCALAPPDATA%\MCO Maker\Temp\scraped_records.json`.
-4. Instantly generates official **Sub Division MCOs** and **RO Office MCOs (CP-FORM-138)** in **Microsoft Word (.docx)** and vector **PDF (.pdf)** formats!
+4. Instantly generates official **Sub Division MCOs** and **RO Office MCOs (CP-FORM-138)** in **Microsoft Word (.docx)** format!
 
 ---
 
@@ -44,7 +44,7 @@ With **MCO Maker**:
 - **Two Distinct MCO Formats**:
   1. **For Sub Division**: Generates Sub Division Meter Change Order with installed and removed meter grids, SDO signature lines, and SIM credentials.
   2. **For RO Office**: Generates Revenue Office CP-FORM-138 with Batch #, Sub Division, Account Number, Transaction Type (1- REPLACEMENT), Feeder Code, and audit signatures.
-- **Multi-Format Export**: Choice of **Microsoft Word (.docx)** and **PDF (.pdf)**.
+- **Word Export**: Generates clean, formatted **Microsoft Word (.docx)** documents ready for printing.
 - **Hardware Binding & Licensing**: BIOS UUID & Windows MachineGuid hardware locking with instant startup (<50ms).
 - **Multi-OS Support**: Native builds for both **Windows 10/11 (64-bit)** and **Windows 7 / Legacy (32-bit with bundled VC++ runtime)**.
 
