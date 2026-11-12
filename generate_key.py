@@ -19,7 +19,7 @@ from tkinter import messagebox, ttk
 
 import requests
 
-DEFAULT_API_URL = os.environ.get("LICENSE_API_URL", "https://mco-maker.vercel.app").rstrip("/")
+DEFAULT_API_URL = os.environ.get("LICENSE_API_URL", "https://bill-scrapper.vercel.app").rstrip("/")
 DEFAULT_ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
 
@@ -85,9 +85,13 @@ def request_generate_key(api_url: str, admin_secret: str, plan_type: str, max_de
     resp = requests.post(url, json=payload, headers=headers, timeout=12)
     resp.raise_for_status()
     data = resp.json()
-    if not data.get("success") or not data.get("keys"):
-        raise RuntimeError(data.get("error", "No serial key returned by license server."))
-    return data["keys"][0]
+    if not data.get("success"):
+        raise RuntimeError(data.get("error", "Failed to generate serial key."))
+    if "keys" in data and data["keys"]:
+        return data["keys"][0]
+    if "serial_key" in data:
+        return data
+    raise RuntimeError(data.get("error", "No serial key returned by license server."))
 
 
 class AdminKeyGenApp(tk.Tk):

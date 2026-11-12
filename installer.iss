@@ -49,26 +49,45 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "redist\api-ms-win-core-path-l1-1-0.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "templates\*"; DestDir: "{app}\templates"; Flags: ignoreversion recursesubdirs createallsubdirs
-#ifdef IncludeVCRedist
+#if FileExists("redist\vc_redist.x64.exe")
+Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+#endif
+#if FileExists("redist\vc_redist.x86.exe")
 Source: "redist\vc_redist.x86.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 #endif
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\mcomaker.ico"
-Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\mcomaker.ico"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\mcomaker.ico"; Tasks: desktopicon
 
 [Run]
-#ifdef IncludeVCRedist
-Filename: "{tmp}\vc_redist.x86.exe"; Parameters: "/install /passive /norestart"; Check: VCRedistNeedsInstall; Flags: waituntilterminated; StatusMsg: "Configuring Microsoft Visual C++ Runtime..."
+#if FileExists("redist\vc_redist.x64.exe")
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart"; Check: VCRedistNeedsInstallX64; Flags: waituntilterminated; StatusMsg: "Configuring Microsoft Visual C++ Runtime (x64)..."
+#endif
+#if FileExists("redist\vc_redist.x86.exe")
+Filename: "{tmp}\vc_redist.x86.exe"; Parameters: "/install /passive /norestart"; Check: VCRedistNeedsInstallX86; Flags: waituntilterminated; StatusMsg: "Configuring Microsoft Visual C++ Runtime (x86)..."
 #endif
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec; WorkingDir: "{app}"
 
 [Code]
-#ifdef IncludeVCRedist
-function VCRedistNeedsInstall: Boolean;
+function SetEnvironmentVariable(lpName, lpValue: string): BOOL;
+external 'SetEnvironmentVariableW@kernel32.dll stdcall';
+
+function VCRedistNeedsInstallX64: Boolean;
+var
+  Installed: Cardinal;
+begin
+  Result := True;
+  if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', Installed) and (Installed = 1) then
+    Result := False
+  else if RegQueryDWordValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', Installed) and (Installed = 1) then
+    Result := False;
+end;
+
+function VCRedistNeedsInstallX86: Boolean;
 var
   Installed: Cardinal;
 begin
@@ -78,4 +97,19 @@ begin
   else if RegQueryDWordValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X86', 'Installed', Installed) and (Installed = 1) then
     Result := False;
 end;
-#endif
+
+function InitializeSetup(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Clear any inherited PyInstaller variables so the relaunched app unpacks cleanly
+  SetEnvironmentVariable('_MEIPASS2', '');
+  SetEnvironmentVariable('_MEIPASS', '');
+  SetEnvironmentVariable('PYTHONHOME', '');
+  SetEnvironmentVariable('PYTHONPATH', '');
+
+  // Terminate any running instances of MCOMaker.exe
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM MCOMaker.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(300);
+  Result := True;
+end;

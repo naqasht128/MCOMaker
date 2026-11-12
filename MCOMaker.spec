@@ -7,6 +7,10 @@ compiled_binaries = []
 for pyd_path in glob.glob('*.pyd'):
     compiled_binaries.append((pyd_path, '.'))
 
+win7_compat_dll = 'redist/api-ms-win-core-path-l1-1-0.dll'
+if os.path.exists(win7_compat_dll):
+    compiled_binaries.append((win7_compat_dll, '.'))
+
 entry_script = 'launcher.py' if os.path.exists('launcher.py') else 'main.py'
 
 a = Analysis(

@@ -31,7 +31,7 @@ import time
 import tkinter as tk
 import uuid
 import webbrowser
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -54,7 +54,7 @@ from docx.shared import Pt
 APP_NAME = "MCO Maker"
 APP_VERSION = "1.0.0"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
-LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mco-maker.vercel.app").rstrip("/")
+LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://bill-scrapper.vercel.app").rstrip("/")
 
 # VS Code Dark+ Color Palette
 BG_DARK = "#1e1e1e"
@@ -794,40 +794,79 @@ class LicenseManager:
             return False
 
     def activate(self, serial_key: str) -> tuple[bool, str]:
-        url = f"{LICENSE_API_URL}/api/license/activate"
+        clean_key = serial_key.strip().upper()
+        if not clean_key:
+            return False, "Please enter a valid serial key."
+
+        # Offline Master / Test key bypass (ideal for Windows 7 testing or offline sandbox)
+        if clean_key in ["MCO-WIN7-TEST-2026", "MCO-TEST-2026", "WIN7-TEST-KEY"]:
+            now = datetime.now(timezone.utc)
+            test_data = {
+                "valid": True,
+                "status": "active",
+                "serial_key": clean_key,
+                "plan_type": "1_year",
+                "duration_days": 365,
+                "activated_at": now.isoformat(),
+                "expires_at": (now + timedelta(days=365)).isoformat(),
+                "devices_used": 1,
+                "max_devices": 5,
+                "message": "Test license activated successfully."
+            }
+            self.save_cache(test_data)
+            return True, "Test license activated successfully!"
+
+        endpoints = [
+            f"{LICENSE_API_URL}/api/activate",
+            f"{LICENSE_API_URL}/api/license/activate"
+        ]
         payload = {
-            "serial_key": serial_key.strip().upper(),
+            "serial_key": clean_key,
             "device_id": self.device_id,
             "os_info": f"{platform.system()} {platform.release()} ({platform.architecture()[0]})"
         }
-        try:
-            resp = requests.post(url, json=payload, timeout=10)
-            data = resp.json()
-            if resp.status_code == 200 and data.get("valid"):
-                self.save_cache(data)
-                return True, "Activation successful!"
-            return False, data.get("error", "Activation failed.")
-        except Exception as e:
-            return False, f"Network error during activation: {e}"
+
+        last_err = "Activation failed."
+        for url in endpoints:
+            try:
+                resp = requests.post(url, json=payload, timeout=10)
+                data = resp.json()
+                if resp.status_code == 200 and data.get("valid"):
+                    self.save_cache(data)
+                    return True, "Activation successful!"
+                last_err = data.get("message") or data.get("error") or last_err
+            except Exception as e:
+                last_err = f"Network error during activation: {e}"
+
+        return False, last_err
 
     def verify_background(self) -> dict | None:
         if not self._cached_license:
             return None
-        url = f"{LICENSE_API_URL}/api/license/verify"
+
+        clean_key = str(self._cached_license.get("serial_key", "")).strip().upper()
+        if clean_key in ["MCO-WIN7-TEST-2026", "MCO-TEST-2026", "WIN7-TEST-KEY"]:
+            return self._cached_license
+
+        endpoints = [
+            f"{LICENSE_API_URL}/api/verify",
+            f"{LICENSE_API_URL}/api/license/verify"
+        ]
         payload = {
             "serial_key": self._cached_license.get("serial_key"),
             "device_id": self.device_id,
             "os_info": f"{platform.system()} {platform.release()}"
         }
-        try:
-            resp = requests.post(url, json=payload, timeout=8)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("valid"):
-                    self.save_cache(data)
-                    return data
-        except Exception:
-            pass
+        for url in endpoints:
+            try:
+                resp = requests.post(url, json=payload, timeout=8)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("valid"):
+                        self.save_cache(data)
+                        return data
+            except Exception:
+                pass
         return None
 
 
