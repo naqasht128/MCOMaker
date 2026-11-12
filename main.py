@@ -595,10 +595,30 @@ class MCODocumentGenerator:
                     p.runs[0].underline = False
                     p.text = f"Book No: {rec.get('sco_no', '')}"
             elif "Office:" in txt:
-                if len(p.runs) > 3:
-                    p.runs[3].text = f"SDO (E) PESCO {sub_div_name}"
+                office_str = f"SDO (E) PESCO {sub_div_name}"
+                avail = max(10, 86 - 8 - len(office_str))
+                lead = min(28, avail // 2)
+                trail = max(4, avail - lead)
+                if len(p.runs) >= 8:
+                    p.runs[1].text = "_" * (lead // 2)
+                    p.runs[2].text = "_" * (lead - (lead // 2))
+                    p.runs[3].text = office_str
+                    p.runs[4].text = "_" * trail
+                    for ri in [5, 6, 7]:
+                        p.runs[ri].text = ""
+                elif len(p.runs) > 3:
+                    p.runs[1].text = "_" * lead
+                    for ri in range(2, 3):
+                        p.runs[ri].text = ""
+                    p.runs[3].text = office_str
+                    if len(p.runs) > 4:
+                        p.runs[4].text = "_" * trail
+                        for ri in range(5, len(p.runs)):
+                            p.runs[ri].text = ""
+                    else:
+                        p.runs[3].text = f"{office_str}{'_' * trail}"
                 else:
-                    p.text = f"Office: ______________________________SDO (E) PESCO {sub_div_name}____ ______________________________"
+                    p.text = f"Office: {'_' * lead}{office_str}{'_' * trail}"
             elif txt.strip().startswith("Date:"):
                 if len(p.runs) > 3:
                     p.runs[3].text = str(rec.get("date", ""))
@@ -1434,8 +1454,8 @@ class MCOMakerApp(tk.Tk):
 
         tk.Button(
             file_row, text="📂 Browse...", font=(UI_FONT, 9, "bold"),
-            fg=TEXT_WHITE, bg=BTN_SEC_BG, activebackground=BTN_SEC_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", padx=12, pady=2,
+            fg=TEXT_WHITE, bg="#ca5010", activebackground="#df4e14",
+            activeforeground=TEXT_WHITE, relief="flat", padx=14, pady=3,
             cursor="hand2", command=self._browse_file
         ).pack(side="left", padx=(8, 0))
 
@@ -1525,7 +1545,6 @@ class MCOMakerApp(tk.Tk):
 
         # Colored Status Box Above Log Screen (Shows "Information Fetched" once finished)
         self.status_box = tk.Frame(card_scrape, bg=CARD_BG)
-        self.status_box.pack(fill="x", padx=14, pady=(0, 4))
 
         self.status_badge = tk.Label(
             self.status_box, text="",
@@ -1534,11 +1553,11 @@ class MCOMakerApp(tk.Tk):
         self.status_badge.pack(fill="x")
 
         # Clean Log Window
-        log_frame = tk.Frame(card_scrape, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
-        log_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
+        self.log_frame = tk.Frame(card_scrape, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
+        self.log_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
 
         self.log_text = tk.Text(
-            log_frame, height=6, bg=INPUT_BG, fg=TEXT_MAIN, font=(MONO_FONT, 9),
+            self.log_frame, height=6, bg=INPUT_BG, fg=TEXT_MAIN, font=(MONO_FONT, 9),
             relief="flat", wrap="word", padx=8, pady=6, state="disabled"
         )
         self.log_text.tag_configure("ok", foreground="#4ec9b0")
@@ -1546,7 +1565,7 @@ class MCOMakerApp(tk.Tk):
         self.log_text.tag_configure("blue", foreground="#4daafc")
         self.log_text.pack(side="left", fill="both", expand=True)
 
-        scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
+        scrollbar = ttk.Scrollbar(self.log_frame, command=self.log_text.yview)
         scrollbar.pack(side="right", fill="y")
         self.log_text.configure(yscrollcommand=scrollbar.set)
 
@@ -1608,7 +1627,7 @@ class MCOMakerApp(tk.Tk):
                 data = json.loads(self.temp_cache_file.read_text(encoding="utf-8"))
                 if data and isinstance(data, list) and len(data) > 0:
                     self.records = data
-                    self._enable_mco_buttons(f"Information Fetched (Cached {len(data)} Bills)")
+                    self._enable_mco_buttons(f"Cached {len(data)} Bills which was fetched earlier")
                     self.info_summary_var.set(f"✔ Restored {len(data)} bills from local cache. Ready to generate MCOs.")
                     self.info_lbl.configure(fg="#3fb950")
                     self._log(f'Local cache restored: {len(data)} bills ready for MCO generation.', tag="ok")
@@ -1617,6 +1636,10 @@ class MCOMakerApp(tk.Tk):
 
     def _enable_mco_buttons(self, badge_text: str = "Information Fetched"):
         # Display colored box above log
+        try:
+            self.status_box.pack(fill="x", padx=14, pady=(0, 4), before=self.log_frame)
+        except Exception:
+            self.status_box.pack(fill="x", padx=14, pady=(0, 4))
         self.status_box.configure(bg=ACCENT_GREEN)
         self.status_badge.configure(text=f"✔  {badge_text}", bg=ACCENT_GREEN)
         self.mco_status_hint.configure(text="✔ Ready to generate MS Word MCO", fg="#89d185")
@@ -1624,8 +1647,12 @@ class MCOMakerApp(tk.Tk):
         self.btn_ro_office.configure(state="normal", bg="#6f42c1", fg=TEXT_WHITE, cursor="hand2")
 
     def _disable_mco_buttons(self):
-        self.status_box.configure(bg=CARD_BG)
+        try:
+            self.status_box.pack_forget()
+        except Exception:
+            pass
         self.status_badge.configure(text="", bg=CARD_BG)
+        self.status_box.configure(bg=CARD_BG)
         self.mco_status_hint.configure(text="— (Buttons activate after information is fetched)", fg=TEXT_MUTED)
         self.btn_sub_div.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
         self.btn_ro_office.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
@@ -1743,7 +1770,6 @@ class MCOMakerApp(tk.Tk):
 
         if not self.stop_event.is_set() and self.records:
             self._enable_mco_buttons("Information Fetched")
-            messagebox.showinfo("Completed", "All billing information fetched successfully!\nYou can now generate Sub Division or RO Office MCOs.")
 
     # ====================================================================
     # MAKE MCO GENERATION (MS WORD)
