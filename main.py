@@ -1493,9 +1493,9 @@ class MCOMakerApp(tk.Tk):
 
         self.btn_start = tk.Button(
             top_act, text="▶ Start Scraping", font=(UI_FONT, 9, "bold"),
-            fg=TEXT_WHITE, bg=ACCENT_GREEN, activebackground=ACCENT_GREEN_HOVER,
-            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2", padx=14, pady=5,
-            command=self._start_scraping
+            fg=BTN_DISABLED_FG, bg=BTN_DISABLED_BG, activebackground=ACCENT_GREEN_HOVER,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="arrow", padx=14, pady=5,
+            command=self._start_scraping, state="disabled"
         )
         self.btn_start.pack(side="left")
 
@@ -1590,9 +1590,12 @@ class MCOMakerApp(tk.Tk):
                 f"✔ Loaded {count} reference numbers from Column A. Detected columns: {', '.join(detected) if detected else 'Standard'}"
             )
             self.info_lbl.configure(fg="#3fb950")
+            # Enable Start Scraping once a valid Excel file is loaded
+            self.btn_start.configure(state="normal", bg=ACCENT_GREEN, fg=TEXT_WHITE, cursor="hand2")
         except Exception as e:
             self.info_summary_var.set(f"Error loading Excel file: {e}")
             self.info_lbl.configure(fg=ACCENT_RED)
+            self.btn_start.configure(state="disabled", bg=BTN_DISABLED_BG, fg=BTN_DISABLED_FG, cursor="arrow")
             messagebox.showerror("File Error", f"Could not load Excel file:\n\n{e}")
 
     def _check_existing_cache(self):
@@ -1642,19 +1645,20 @@ class MCOMakerApp(tk.Tk):
             self.btn_stop.configure(state="disabled")
 
     def _start_scraping(self):
-        if not self.records:
-            if not self.file_path_var.get().strip():
-                messagebox.showwarning("No File", "Please select an Excel file first.")
-                return
-            try:
-                self.records, self.col_map = smart_load_excel(self.file_path_var.get().strip())
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to parse Excel: {e}")
-                return
+        fpath = self.file_path_var.get().strip()
+        if not fpath:
+            messagebox.showwarning("Please Select Excel", "Please select an Input Excel file first before scraping.")
+            return
+
+        try:
+            self.records, self.col_map = smart_load_excel(fpath)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to parse Excel file:\n\n{e}")
+            return
 
         total = len(self.records)
         if total == 0:
-            messagebox.showwarning("Empty", "No reference numbers found in Column A.")
+            messagebox.showwarning("Empty Excel", "No reference numbers found in Column A of the selected Excel file.")
             return
 
         self._clear_log()
@@ -1729,7 +1733,7 @@ class MCOMakerApp(tk.Tk):
 
     def _on_scraping_finished(self):
         self.is_scraping = False
-        self.btn_start.configure(state="normal")
+        self.btn_start.configure(state="normal", bg=ACCENT_GREEN, fg=TEXT_WHITE, cursor="hand2")
         self.btn_pause.configure(state="disabled")
         self.btn_stop.configure(state="disabled")
 
