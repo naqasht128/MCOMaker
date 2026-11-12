@@ -1,3 +1,3 @@
-# Release v1.0.1
+# Release v1.0.2
 
-Release v1.0.1 with auto updater, Windows 7 support, and cloud licensing
+v1.0.2: UI typography improvements for input file selector and green status indicator

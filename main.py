@@ -52,7 +52,7 @@ from docx.shared import Pt
 
 # Application Metadata
 APP_NAME = "MCO Maker"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
 LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 
@@ -1287,8 +1287,8 @@ class MCOMakerApp(tk.Tk):
         card_input.pack(side="top", fill="x", padx=16, pady=(0, 8))
 
         tk.Label(
-            card_input, text="1. Select Input Excel File (Reference Numbers must be in Column A)",
-            font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=CARD_BG
+            card_input, text="Select Input Excel File",
+            font=(UI_FONT, 10, "bold"), fg=TEXT_WHITE, bg=CARD_BG
         ).pack(anchor="w", padx=14, pady=(8, 4))
 
         file_row = tk.Frame(card_input, bg=CARD_BG)
@@ -1313,7 +1313,7 @@ class MCOMakerApp(tk.Tk):
         self.info_summary_var = tk.StringVar(value="No file loaded. Please choose an Excel file (.xlsx or .xls)")
         self.info_lbl = tk.Label(
             card_input, textvariable=self.info_summary_var,
-            font=(UI_FONT, 8), fg=TEXT_MUTED, bg=CARD_BG
+            font=(UI_FONT, 10, "bold"), fg=TEXT_MUTED, bg=CARD_BG
         )
         self.info_lbl.pack(anchor="w", padx=14, pady=(0, 8))
 
@@ -1327,7 +1327,7 @@ class MCOMakerApp(tk.Tk):
         mco_header_row.pack(fill="x", padx=14, pady=(8, 4))
 
         tk.Label(
-            mco_header_row, text="2. Make MCO (Generate Documents)",
+            mco_header_row, text="Make MCO (Generate Documents)",
             font=(UI_FONT, 10, "bold"), fg=TEXT_WHITE, bg=CARD_BG
         ).pack(side="left")
 
@@ -1462,7 +1462,7 @@ class MCOMakerApp(tk.Tk):
             self.info_summary_var.set(
                 f"✔ Loaded {count} reference numbers from Column A. Detected columns: {', '.join(detected) if detected else 'Standard'}"
             )
-            self.info_lbl.configure(fg="#4ec9b0")
+            self.info_lbl.configure(fg="#3fb950")
         except Exception as e:
             self.info_summary_var.set(f"Error loading Excel file: {e}")
             self.info_lbl.configure(fg=ACCENT_RED)
@@ -1476,7 +1476,7 @@ class MCOMakerApp(tk.Tk):
                     self.records = data
                     self._enable_mco_buttons(f"Information Fetched (Cached {len(data)} Bills)")
                     self.info_summary_var.set(f"✔ Restored {len(data)} bills from local cache. Ready to generate MCOs.")
-                    self.info_lbl.configure(fg="#4ec9b0")
+                    self.info_lbl.configure(fg="#3fb950")
                     self._log(f'Local cache restored: {len(data)} bills ready for MCO generation.', tag="ok")
             except Exception:
                 pass
