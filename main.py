@@ -79,7 +79,7 @@ from docx.shared import Pt
 
 # Application Metadata
 APP_NAME = "MCO Maker"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
 LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 
@@ -1097,11 +1097,19 @@ class LicenseGateDialog(tk.Toplevel):
         hw_row.pack(fill="x", padx=12, pady=(0, 8))
 
         self.hw_entry = tk.Entry(
-            hw_row, font=(MONO_FONT, 9), bg=CARD_BG, fg=TEXT_WHITE,
-            relief="flat", highlightthickness=1, highlightbackground=BORDER_COLOR
+            hw_row,
+            font=(MONO_FONT, 9, "bold"),
+            bg="#202838",
+            readonlybackground="#202838",
+            fg=TEXT_WHITE,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#3b4a68",
+            selectbackground=ACCENT_BLUE,
+            selectforeground=TEXT_WHITE,
         )
         self.hw_entry.insert(0, self.license_mgr.device_id)
-        self.hw_entry.configure(state="readonly")
+        self.hw_entry.configure(state="readonly", readonlybackground="#202838")
         self.hw_entry.pack(side="left", fill="x", expand=True, ipady=3)
 
         tk.Button(

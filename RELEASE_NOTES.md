@@ -1,3 +1,3 @@
-# Release v1.0.5
+# Release v1.0.6
 
-Remove hardcoded pricing from UI and launch on website
+Fix Windows 7 hardware ID box visibility with dark theme styling

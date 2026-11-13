@@ -27,6 +27,7 @@ Sample_Formats/
 # License & Local AppData
 license.json
 admin_config.json
+serialkeys_history.txt
 *.tmp
 *.log
 
