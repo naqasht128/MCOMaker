@@ -1,3 +1,3 @@
-# Release v1.0.6
+# Release v1.0.7
 
-Fix Windows 7 hardware ID box visibility with dark theme styling
+Real-time CAPTCHA logging in screen log, retry transparency, and 3-second safety delay to avoid PITC portal blocking
