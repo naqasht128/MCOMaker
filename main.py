@@ -70,6 +70,7 @@ def play_notification_sound():
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
+from typing import Callable
 
 _ocr_instance = None
 def get_ocr():
@@ -421,7 +422,11 @@ def is_network_error(e: Exception) -> bool:
     ])
 
 
-def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk/pescobill") -> dict:
+def scrape_pesco_bill(
+    account_no: str,
+    base_url: str = "https://bill.pitc.com.pk/pescobill",
+    status_callback: Callable[[str, str], None] | None = None
+) -> dict:
     """Scrapes billing details for a reference number from PITC portal."""
     clean_ac = re.sub(r"\D", "", str(account_no))
     session = requests.Session()
@@ -430,6 +435,8 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
     })
 
     # Step 1: GET to obtain ASP.NET form tokens
+    if status_callback:
+        status_callback("Connecting to PITC portal...", "blue")
     resp = session.get(base_url, timeout=15)
     soup = BeautifulSoup(resp.text, "lxml")
     form = soup.find("form")
@@ -448,6 +455,8 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
     has_captcha_input = form.find("input", attrs={"name": "captchaInput"}) or form.find("input", id=lambda s: s and "captcha" in str(s).lower())
 
     res = None
+    solved_captcha = ""
+    solved_attempts = 0
     if captcha_img and has_captcha_input:
         ocr = get_ocr()
         if not ocr:
@@ -455,12 +464,20 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
 
         max_captcha_attempts = 5
         for attempt in range(max_captcha_attempts):
+            if status_callback:
+                if attempt == 0:
+                    status_callback("Solving CAPTCHA...", "blue")
+                else:
+                    status_callback(f"Solving CAPTCHA (Attempt {attempt + 1}/{max_captcha_attempts})...", "blue")
+
             img_src = captcha_img.get("src", "")
             img_url = urllib.parse.urljoin(base_url, img_src)
             img_resp = session.get(img_url, timeout=15)
 
             captcha_code = ocr.classification(img_resp.content).strip()
             logger.info(f"[{clean_ac}] Solved CAPTCHA: {captcha_code}")
+            if status_callback:
+                status_callback(f"Solved CAPTCHA: {captcha_code} (Verifying...)", "blue")
 
             captcha_field = has_captcha_input.get("name", "captchaInput")
             payload[captcha_field] = captcha_code
@@ -469,12 +486,16 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
             res = session.post(base_url, data=payload, timeout=20)
 
             if "CONSUMER DETAIL" in res.text.upper() or "CONSUMER DETAILS" in res.text.upper():
+                solved_captcha = captcha_code
+                solved_attempts = attempt + 1
                 break
 
             res_soup = BeautifulSoup(res.text, "lxml")
             err_text = res_soup.get_text(" ").upper()
             if "INVALID CAPTCHA" in err_text or "CAPTCHA CODE" in err_text:
                 logger.warning(f"[{clean_ac}] CAPTCHA verification failed on attempt {attempt + 1}. Retrying...")
+                if status_callback:
+                    status_callback(f"CAPTCHA '{captcha_code}' verification failed (attempt {attempt + 1}/{max_captcha_attempts}). Retrying...", "err")
                 new_form = res_soup.select_one("form#SubmitForm") or res_soup.find("form")
                 if new_form:
                     payload = {i["name"]: i.get("value", "") for i in new_form.select("input[type=hidden][name]")}
@@ -491,9 +512,17 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
             break
     else:
         # Step 2: POST query
+        if status_callback:
+            status_callback("Fetching bill details...", "blue")
         res = session.post(base_url, data=payload, timeout=20)
 
     if not res or ("CONSUMER DETAIL" not in res.text.upper() and "CONSUMER DETAILS" not in res.text.upper()):
+        res_soup = BeautifulSoup(res.text, "lxml") if res else None
+        err_text = res_soup.get_text(" ").upper() if res_soup else ""
+        if "INVALID CAPTCHA" in err_text or "CAPTCHA CODE" in err_text:
+            raise RuntimeError(f"CAPTCHA verification failed after {max_captcha_attempts} attempts")
+        elif "RECORD NOT FOUND" in err_text or "NO BILL" in err_text or "NOT FOUND" in err_text:
+            raise RuntimeError("Bill Not Found")
         raise RuntimeError("Bill Not Found")
 
     soup_bill = BeautifulSoup(res.text, "lxml")
@@ -513,6 +542,8 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
         "previous_reading": "",
         "old_meter_no": "",
         "old_present_reading": "",
+        "captcha_code": solved_captcha,
+        "captcha_attempts": solved_attempts,
     }
 
     # Grid cells
@@ -1743,6 +1774,8 @@ class MCOMakerApp(tk.Tk):
         self.log_text.tag_configure("green", foreground="#3fb950")
         self.log_text.tag_configure("err", foreground="#f44747")
         self.log_text.tag_configure("blue", foreground="#4daafc")
+        self.log_text.tag_configure("muted", foreground="#858585")
+        self.log_text.tag_configure("yellow", foreground="#dcdcaa")
         self.log_text.grid(row=0, column=0, sticky="nsew")
 
         self.scrollbar = tk.Scrollbar(
@@ -1786,9 +1819,31 @@ class MCOMakerApp(tk.Tk):
         # Load existing cached records if available
         self._check_existing_cache()
 
-    def _log(self, message: str, tag: str | None = None):
-        """Append clean log message."""
+    def _clear_transient_unlocked(self):
+        """Remove transient log line if present. Caller must have log_text state='normal'."""
+        if getattr(self, "_has_transient_log", False):
+            try:
+                self.log_text.delete("end-2c linestart", "end-1c")
+            except Exception:
+                pass
+            self._has_transient_log = False
+
+    def _log_transient(self, message: str, tag: str | None = None):
+        """Display or update a transient status/progress line in the log window."""
         self.log_text.configure(state="normal")
+        self._clear_transient_unlocked()
+        if tag:
+            self.log_text.insert("end", f"{message}\n", tag)
+        else:
+            self.log_text.insert("end", f"{message}\n")
+        self._has_transient_log = True
+        self.log_text.see("end")
+        self.log_text.configure(state="disabled")
+
+    def _log(self, message: str, tag: str | None = None):
+        """Append clean permanent log message, replacing any transient message first."""
+        self.log_text.configure(state="normal")
+        self._clear_transient_unlocked()
         if tag:
             self.log_text.insert("end", f"{message}\n", tag)
         else:
@@ -1797,9 +1852,31 @@ class MCOMakerApp(tk.Tk):
         self.log_text.configure(state="disabled")
 
     def _clear_log(self):
+        self._has_transient_log = False
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
+
+    def _wait_safety_delay(self, seconds: float = 3.0):
+        """Wait `seconds` before next request with live countdown to prevent PITC portal IP blocking."""
+        remaining_slices = int(seconds * 10)
+        last_logged_sec = -1
+        while remaining_slices > 0:
+            if self.stop_event.is_set():
+                break
+            self.pause_event.wait()
+            if self.stop_event.is_set():
+                break
+
+            rem_sec = (remaining_slices + 9) // 10
+            if rem_sec != last_logged_sec:
+                last_logged_sec = rem_sec
+                self.after(0, lambda s=rem_sec: self._log_transient(
+                    f"Waiting {s}s safety delay to prevent PITC blocking...", tag="muted"
+                ))
+
+            time.sleep(0.1)
+            remaining_slices -= 1
 
     def _browse_file(self):
         f = filedialog.askopenfilename(
@@ -1919,6 +1996,7 @@ class MCOMakerApp(tk.Tk):
             self.pause_event.clear()
             self.is_paused = True
             self.btn_pause.configure(text="▶ Resume")
+            self._log_transient("⏸ Scraping paused. Click 'Resume' to continue...", tag="yellow")
 
     def _stop_scraping(self):
         if self.is_scraping:
@@ -1991,6 +2069,13 @@ class MCOMakerApp(tk.Tk):
 
             rec = self.records[idx]
             ac_no = rec.get("reference", "")
+            prefix = f"{idx + 1}/{total}: {ac_no}"
+
+            def on_status(msg: str, tag: str = "blue"):
+                if "failed" in msg.lower() or "retrying" in msg.lower():
+                    self.after(0, lambda m=f"{prefix} --- {msg}", t="err": self._log(m, tag=t))
+                else:
+                    self.after(0, lambda m=f"{prefix} --- {msg}", t=tag: self._log_transient(m, tag=t))
 
             # Retry loop for internet disconnection
             while not self.stop_event.is_set():
@@ -1999,7 +2084,8 @@ class MCOMakerApp(tk.Tk):
                     break
 
                 try:
-                    bill_data = scrape_pesco_bill(ac_no)
+                    self.after(0, lambda p=prefix: self._log_transient(f"{p} --- Connecting & Solving CAPTCHA...", tag="blue"))
+                    bill_data = scrape_pesco_bill(ac_no, status_callback=on_status)
                     rec.update(bill_data)
                     rec["_fetched"] = True
                     # Keep original excel overrides if present
@@ -2028,10 +2114,21 @@ class MCOMakerApp(tk.Tk):
                     rec["_log_status"] = "Fetched"
                     rec["_log_remarks"] = remarks
 
-                    self.after(0, lambda i=idx+1, t=total, ac=ac_no, rem=remarks, tg=log_tag: self._log(f'{i}/{t}: {ac} --- Fetched --- "{rem}"', tag=tg))
+                    captcha_code = bill_data.get("captcha_code", "")
+                    attempts = bill_data.get("captcha_attempts", 1)
+                    rec["_captcha"] = captcha_code
+                    if captcha_code:
+                        cap_tag = f"CAPTCHA: {captcha_code}" if attempts <= 1 else f"CAPTCHA: {captcha_code} (Attempt {attempts})"
+                    else:
+                        cap_tag = "No CAPTCHA"
 
+                    log_msg = f'{prefix} --- {cap_tag} --- Fetched --- "{remarks}"'
+                    self.after(0, lambda m=log_msg, tg=log_tag: self._log(m, tag=tg))
                     self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
-                    time.sleep(0.5)
+
+                    # 3 seconds safety delay between requests to avoid PITC portal blocking
+                    if idx < total - 1:
+                        self._wait_safety_delay(3.0)
                     break
 
                 except Exception as e:
@@ -2058,7 +2155,7 @@ class MCOMakerApp(tk.Tk):
                                 break
 
                             try:
-                                bill_data = scrape_pesco_bill(ac_no)
+                                bill_data = scrape_pesco_bill(ac_no, status_callback=on_status)
                                 rec.update(bill_data)
                                 rec["_fetched"] = True
                                 if rec.get("msn"): bill_data["msn"] = rec["msn"]
@@ -2087,10 +2184,20 @@ class MCOMakerApp(tk.Tk):
                                 rec["_log_status"] = "Fetched"
                                 rec["_log_remarks"] = remarks
 
-                                self.after(0, lambda i=idx+1, t=total, ac=ac_no, rem=remarks, tg=log_tag: self._log(f'{i}/{t}: {ac} --- Fetched --- "{rem}"', tag=tg))
+                                captcha_code = bill_data.get("captcha_code", "")
+                                attempts = bill_data.get("captcha_attempts", 1)
+                                rec["_captcha"] = captcha_code
+                                if captcha_code:
+                                    cap_tag = f"CAPTCHA: {captcha_code}" if attempts <= 1 else f"CAPTCHA: {captcha_code} (Attempt {attempts})"
+                                else:
+                                    cap_tag = "No CAPTCHA"
 
+                                log_msg = f'{prefix} --- {cap_tag} --- Fetched --- "{remarks}"'
+                                self.after(0, lambda m=log_msg, tg=log_tag: self._log(m, tag=tg))
                                 self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
-                                time.sleep(0.5)
+
+                                if idx < total - 1:
+                                    self._wait_safety_delay(3.0)
                                 reconnected = True
                                 break
                             except Exception as retry_err:
@@ -2109,6 +2216,8 @@ class MCOMakerApp(tk.Tk):
                         if "not found" in err_lower or "no bill" in err_lower:
                             err_type = "Bill Not Found"
                             rec["_not_found"] = True
+                        elif "captcha" in err_lower:
+                            err_type = err_str
                         elif "unavailable" in err_lower or "form" in err_lower or "website down" in err_lower:
                             err_type = "Website Down / Portal Unavailable"
                         elif is_network_error(e) or "network" in err_lower or "timeout" in err_lower or "connection" in err_lower:
@@ -2120,9 +2229,14 @@ class MCOMakerApp(tk.Tk):
                         rec["_log_status"] = "Error"
                         rec["_log_remarks"] = err_type
                         self._save_cache()
-                        self.after(0, lambda i=idx+1, t=total, ac=ac_no, et=err_type: self._log(f'{i}/{t}: {ac} --- Error --- "{et}"', tag="err"))
+
+                        captcha_code = rec.get("_captcha", "")
+                        cap_tag = f" --- CAPTCHA: {captcha_code}" if captcha_code else ""
+                        self.after(0, lambda p=prefix, ct=cap_tag, et=err_type: self._log(f'{p}{ct} --- Error --- "{et}"', tag="err"))
                         self.after(0, lambda i=idx+1: self.progress_bar.configure(value=i))
-                        time.sleep(0.5)
+
+                        if idx < total - 1:
+                            self._wait_safety_delay(3.0)
                         break
 
         self._save_cache()

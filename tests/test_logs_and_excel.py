@@ -195,6 +195,44 @@ class TestLogsAndExcel(unittest.TestCase):
             app.destroy()
         print("MCO buttons disabling and notification sound tests passed!")
 
+    def test_captcha_logging_and_transient_lines(self):
+        with patch.object(main.LicenseManager, "is_locally_active", return_value=True), \
+             patch.object(main.MCOMakerApp, "_bg_heartbeat"), \
+             patch.object(main.MCOMakerApp, "_bg_update_check"):
+            app = MCOMakerApp()
+            app.withdraw()
+
+            app._clear_log()
+            # Transient progress line
+            app._log_transient('1/2: 07269330425000 --- Solving CAPTCHA...', tag="blue")
+            self.assertIn("Solving CAPTCHA...", app.log_text.get("1.0", "end"))
+
+            # Permanent success line replaces transient
+            app._log('1/2: 07269330425000 --- CAPTCHA: Y99922 --- Fetched --- "Normal"', tag="ok")
+            log_text = app.log_text.get("1.0", "end").strip()
+            self.assertNotIn("Solving CAPTCHA...", log_text)
+            self.assertIn('1/2: 07269330425000 --- CAPTCHA: Y99922 --- Fetched --- "Normal"', log_text)
+
+            # Safety delay countdown
+            app._log_transient('Waiting 3s safety delay to prevent PITC blocking...', tag="muted")
+            self.assertIn("Waiting 3s safety delay", app.log_text.get("1.0", "end"))
+
+            # Next record with retry warning
+            app._log('2/2: 07269330425005 --- CAPTCHA "12345" invalid, retrying (Attempt 2/5)...', tag="err")
+            app._log('2/2: 07269330425005 --- CAPTCHA: 843862 (Attempt 2) --- Fetched --- "Normal"', tag="ok")
+            app._log("Scrapping completed. Click the buttons below for generating MCOs.", tag="green")
+
+            lines = [l.strip() for l in app.log_text.get("1.0", "end").strip().splitlines() if l.strip()]
+            self.assertEqual(len(lines), 4)
+            self.assertEqual(lines[0], '1/2: 07269330425000 --- CAPTCHA: Y99922 --- Fetched --- "Normal"')
+            self.assertEqual(lines[1], '2/2: 07269330425005 --- CAPTCHA "12345" invalid, retrying (Attempt 2/5)...')
+            self.assertEqual(lines[2], '2/2: 07269330425005 --- CAPTCHA: 843862 (Attempt 2) --- Fetched --- "Normal"')
+            self.assertEqual(lines[3], 'Scrapping completed. Click the buttons below for generating MCOs.')
+
+            app.destroy()
+        print("CAPTCHA logging and transient delay tests passed!")
+
+
 
 if __name__ == "__main__":
     unittest.main()
