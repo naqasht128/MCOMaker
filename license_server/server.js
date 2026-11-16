@@ -23,6 +23,38 @@ const TABLE_LICENSES = process.env.TABLE_LICENSES || 'mco_licenses';
 const TABLE_DEVICES = process.env.TABLE_DEVICES || 'mco_license_devices';
 const TABLE_UPDATES = process.env.TABLE_UPDATES || 'mco_app_updates';
 const KEY_PREFIX = process.env.KEY_PREFIX || 'MCO';
+const GITHUB_REPO = process.env.GITHUB_REPO || 'naqasht128/MCOMaker';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+
+function cleanReleaseNotes(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const cleaned = [];
+
+  for (let line of lines) {
+    let trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Skip automated GitHub comparison footer lines (e.g. **Full Changelog**: ...)
+    if (/full changelog/i.test(trimmed)) continue;
+
+    // Strip GitHub repository links, comparison URLs, and PR references
+    if (/github\.com/i.test(trimmed)) {
+      trimmed = trimmed
+        .replace(/\s*in\s+https?:\/\/github\.com\S+/gi, '')
+        .replace(/\[([^\]]+)\]\(https?:\/\/github\.com[^\)]*\)/gi, '$1')
+        .replace(/https?:\/\/github\.com\S*/gi, '')
+        .replace(/\s*by\s+@[\w-]+/gi, '')
+        .trim();
+    }
+
+    if (trimmed) {
+      cleaned.push(trimmed);
+    }
+  }
+
+  return cleaned.join('\n').trim();
+}
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
@@ -301,42 +333,160 @@ app.post(['/api/admin/generate', '/admin/generate'], async (req, res) => {
 // Update checks
 app.get(['/api/updates/latest', '/updates/latest'], async (req, res) => {
   try {
-    if (!supabase) {
-      return res.json({ update_available: false });
+    // 1. Query GitHub dynamically (supports both authenticated and public access)
+    try {
+      const ghHeaders = {
+        'User-Agent': 'MCOMaker-LicenseServer',
+        'Accept': 'application/vnd.github.v3+json'
+      };
+      if (GITHUB_TOKEN) {
+        ghHeaders['Authorization'] = `Bearer ${GITHUB_TOKEN}`;
+      }
+
+      const ghUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+      let ghRes = await fetch(ghUrl, { headers: ghHeaders });
+
+      // If authenticated fetch failed (e.g. expired/invalid token), retry anonymously
+      if (!ghRes.ok && GITHUB_TOKEN) {
+        delete ghHeaders['Authorization'];
+        ghRes = await fetch(ghUrl, { headers: ghHeaders });
+      }
+
+      if (ghRes.ok) {
+        const data = await ghRes.json();
+        const tag = (data.tag_name || '').replace(/^v/, '');
+        const assets = data.assets || [];
+
+        const setupAsset = assets.find(a => a.name.toLowerCase().includes('setup') && a.name.toLowerCase().endsWith('.exe'))
+          || assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+
+        if (setupAsset) {
+          const host = req.get('host');
+          const proto = req.headers['x-forwarded-proto'] || 'https';
+          const dlUrl = setupAsset.browser_download_url || `${proto}://${host}/api/updates/download?asset_id=${setupAsset.id}`;
+          return res.json({
+            update_available: true,
+            latest_version: tag,
+            version: tag,
+            file_name: setupAsset.name,
+            file_size: setupAsset.size || 0,
+            download_url: dlUrl,
+            release_notes: cleanReleaseNotes(data.body) || 'New update available with performance enhancements.'
+          });
+        }
+      }
+    } catch (ghErr) {
+      console.warn('[GH FETCH WARN] Failed to fetch from GitHub API:', ghErr.message);
     }
 
-    const isWin7 = (req.query.os || '').toLowerCase().includes('win7') || (req.query.os || '').toLowerCase().includes('7');
+    // 2. Fallback: Check Supabase table TABLE_UPDATES if present
+    try {
+      if (supabase) {
+        const { data: updateRecord } = await supabase
+          .from(TABLE_UPDATES)
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-    const { data: update, error } = await supabase
-      .from(TABLE_UPDATES)
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error || !update) {
-      return res.json({ update_available: false, current_version: '1.0.0' });
+        if (updateRecord && updateRecord.version) {
+          const v = updateRecord.version.replace(/^v/, '');
+          return res.json({
+            update_available: true,
+            latest_version: v,
+            version: v,
+            file_name: updateRecord.file_name || 'MCOMaker-Setup.exe',
+            file_size: updateRecord.file_size || 0,
+            download_url: updateRecord.download_url,
+            release_notes: cleanReleaseNotes(updateRecord.release_notes) || 'New update available.'
+          });
+        }
+      }
+    } catch (dbErr) {
+      // Table may not exist yet, continue to default fallback
     }
 
-    let downloadUrl = update.download_url;
-    let fileName = update.file_name;
-
-    if (isWin7 && downloadUrl.includes('-Setup.exe') && !downloadUrl.includes('-Win7-Setup.exe')) {
-      downloadUrl = downloadUrl.replace('-Setup.exe', '-Win7-Setup.exe');
-      fileName = fileName.replace('-Setup.exe', '-Win7-Setup.exe');
-    }
-
-    res.json({
+    // 3. Fallback to environment variables
+    const fallbackVersion = (process.env.LATEST_VERSION || '1.0.6').replace(/^v/, '');
+    const fallbackUrl = process.env.LATEST_DOWNLOAD_URL || `https://github.com/${GITHUB_REPO}/releases/latest/download/MCOMaker-Setup.exe`;
+    return res.json({
       update_available: true,
-      latest_version: update.version,
-      download_url: downloadUrl,
-      file_name: fileName,
-      file_size: update.file_size,
-      release_notes: update.release_notes
+      latest_version: fallbackVersion,
+      version: fallbackVersion,
+      file_name: 'MCOMaker-Setup.exe',
+      download_url: fallbackUrl,
+      release_notes: 'Latest version of MCO Maker.'
     });
+
   } catch (err) {
-    console.error('Update check error:', err);
-    res.json({ update_available: false });
+    console.error('[UPDATES ERROR]', err);
+    return res.status(500).json({ error: 'Failed to check for updates' });
+  }
+});
+
+/**
+ * GET /api/updates/download
+ * Proxies/streams the installer file from private GitHub Release securely
+ */
+app.get(['/api/updates/download', '/updates/download'], async (req, res) => {
+  try {
+    const { asset_id } = req.query;
+
+    if (asset_id && GITHUB_TOKEN) {
+      try {
+        const assetUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/assets/${asset_id}`;
+        const ghRes = await fetch(assetUrl, {
+          headers: {
+            'User-Agent': 'MCOMaker-LicenseServer',
+            'Authorization': `Bearer ${GITHUB_TOKEN}`,
+            'Accept': 'application/octet-stream'
+          },
+          redirect: 'follow'
+        });
+
+        if (ghRes.ok) {
+          const contentType = ghRes.headers.get('content-type') || 'application/octet-stream';
+          const arrayBuffer = await ghRes.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Length', buffer.length);
+          res.setHeader('Cache-Control', 'no-transform, public, max-age=300');
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Content-Disposition', 'attachment; filename="MCOMaker-Setup.exe"');
+
+          return res.send(buffer);
+        }
+      } catch (proxyErr) {
+        console.warn('[DOWNLOAD PROXY WARN]', proxyErr.message);
+      }
+    }
+
+    // Direct redirect to GitHub Release download URL
+    try {
+      const ghUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+      const ghRes = await fetch(ghUrl, {
+        headers: { 'User-Agent': 'MCOMaker-LicenseServer', 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (ghRes.ok) {
+        const data = await ghRes.json();
+        const assets = data.assets || [];
+        const setupAsset = (asset_id ? assets.find(a => String(a.id) === String(asset_id)) : null)
+          || assets.find(a => a.name.toLowerCase().includes('setup') && a.name.toLowerCase().endsWith('.exe'))
+          || assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+        if (setupAsset && setupAsset.browser_download_url) {
+          return res.redirect(302, setupAsset.browser_download_url);
+        }
+      }
+    } catch (redirectErr) {
+      console.warn('[DOWNLOAD REDIRECT WARN]', redirectErr.message);
+    }
+
+    const directUrl = process.env.LATEST_DOWNLOAD_URL || `https://github.com/${GITHUB_REPO}/releases/latest/download/MCOMaker-Setup.exe`;
+    return res.redirect(302, directUrl);
+  } catch (err) {
+    console.error('[DOWNLOAD PROXY ERROR]', err);
+    return res.redirect(302, `https://github.com/${GITHUB_REPO}/releases/latest/download/MCOMaker-Setup.exe`);
   }
 });
 

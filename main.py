@@ -69,6 +69,19 @@ def play_notification_sound():
 
 import requests
 from bs4 import BeautifulSoup
+import urllib.parse
+
+_ocr_instance = None
+def get_ocr():
+    global _ocr_instance
+    if _ocr_instance is None:
+        try:
+            import ddddocr
+            _ocr_instance = ddddocr.DdddOcr(show_ad=False)
+        except Exception as exc:
+            logger.warning(f"Failed to initialize ddddocr: {exc}")
+            _ocr_instance = False
+    return _ocr_instance if _ocr_instance else None
 import openpyxl
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -431,9 +444,56 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
         "btnSearch": "Search"
     })
 
-    # Step 2: POST query
-    res = session.post(base_url, data=payload, timeout=20)
-    if "CONSUMER DETAIL" not in res.text.upper() and "CONSUMER DETAILS" not in res.text.upper():
+    captcha_img = form.find("img", id="captchaImage") or form.find("img", src=lambda s: s and "Captcha" in s)
+    has_captcha_input = form.find("input", attrs={"name": "captchaInput"}) or form.find("input", id=lambda s: s and "captcha" in str(s).lower())
+
+    res = None
+    if captcha_img and has_captcha_input:
+        ocr = get_ocr()
+        if not ocr:
+            raise RuntimeError("CAPTCHA detected on PITC bill portal, but ddddocr is not installed.")
+
+        max_captcha_attempts = 3
+        for attempt in range(max_captcha_attempts):
+            img_src = captcha_img.get("src", "")
+            img_url = urllib.parse.urljoin(base_url, img_src)
+            img_resp = session.get(img_url, timeout=15)
+
+            captcha_code = ocr.classification(img_resp.content).strip()
+            logger.info(f"[{clean_ac}] Solved CAPTCHA: {captcha_code}")
+
+            captcha_field = has_captcha_input.get("name", "captchaInput")
+            payload[captcha_field] = captcha_code
+
+            time.sleep(0.3)
+            res = session.post(base_url, data=payload, timeout=20)
+
+            if "CONSUMER DETAIL" in res.text.upper() or "CONSUMER DETAILS" in res.text.upper():
+                break
+
+            res_soup = BeautifulSoup(res.text, "lxml")
+            err_text = res_soup.get_text(" ").upper()
+            if "INVALID CAPTCHA" in err_text or "CAPTCHA CODE" in err_text:
+                logger.warning(f"[{clean_ac}] CAPTCHA verification failed on attempt {attempt + 1}. Retrying...")
+                new_form = res_soup.select_one("form#SubmitForm") or res_soup.find("form")
+                if new_form:
+                    payload = {i["name"]: i.get("value", "") for i in new_form.select("input[type=hidden][name]")}
+                    payload.update({
+                        "rbSearchByList": "refno",
+                        "searchTextBox": clean_ac,
+                        "ruCodeTextBox": "",
+                        "btnSearch": "Search"
+                    })
+                    captcha_img = new_form.find("img", id="captchaImage") or new_form.find("img", src=lambda s: s and "Captcha" in s)
+                    has_captcha_input = new_form.find("input", attrs={"name": "captchaInput"}) or new_form.find("input", id=lambda s: s and "captcha" in str(s).lower())
+                time.sleep(1.0)
+                continue
+            break
+    else:
+        # Step 2: POST query
+        res = session.post(base_url, data=payload, timeout=20)
+
+    if not res or ("CONSUMER DETAIL" not in res.text.upper() and "CONSUMER DETAILS" not in res.text.upper()):
         raise RuntimeError("Bill Not Found")
 
     soup_bill = BeautifulSoup(res.text, "lxml")
@@ -1492,10 +1552,9 @@ class MCOMakerApp(tk.Tk):
             resp = requests.get(url, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                if data.get("update_available"):
-                    latest = data.get("latest_version", "")
-                    if latest and latest != APP_VERSION:
-                        self.after(0, lambda: self._show_update_banner(latest, data.get("download_url", "")))
+                latest = str(data.get("latest_version") or data.get("version") or "").lstrip("v")
+                if latest and latest != APP_VERSION:
+                    self.after(0, lambda: self._show_update_banner(latest, data.get("download_url", "")))
         except Exception:
             pass
 
@@ -2375,8 +2434,8 @@ class MCOMakerApp(tk.Tk):
             resp = requests.get(url, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                latest = data.get("latest_version", "")
-                if data.get("update_available") and latest and latest != APP_VERSION:
+                latest = str(data.get("latest_version") or data.get("version") or "").lstrip("v")
+                if latest and latest != APP_VERSION:
                     dl_url = data.get("download_url", "https://github.com/naqasht128/MCOMaker/releases")
                     res = messagebox.askyesno(
                         "Update Available",

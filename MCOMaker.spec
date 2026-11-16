@@ -13,6 +13,14 @@ if os.path.exists(win7_compat_dll):
 
 entry_script = 'launcher.py' if os.path.exists('launcher.py') else 'main.py'
 
+from PyInstaller.utils.hooks import collect_data_files
+
+ddddocr_datas = []
+try:
+    ddddocr_datas = collect_data_files('ddddocr')
+except Exception:
+    pass
+
 a = Analysis(
     [entry_script],
     pathex=[],
@@ -20,14 +28,16 @@ a = Analysis(
     datas=[
         ('assets', 'assets'),
         ('templates', 'templates')
-    ],
+    ] + ddddocr_datas,
     hiddenimports=[
         'openpyxl',
         'bs4',
         'requests',
         'lxml',
         'docx',
-        'main'
+        'main',
+        'ddddocr',
+        'onnxruntime'
     ],
     hookspath=[],
     hooksconfig={},
