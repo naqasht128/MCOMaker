@@ -1037,8 +1037,8 @@ class LicenseManager:
         if not clean_key:
             return False, "Please enter a valid serial key."
 
-        # Offline Master / Test key bypass (ideal for Windows 7 testing or offline sandbox)
-        if clean_key in ["MCO-WIN7-TEST-2026", "MCO-TEST-2026", "WIN7-TEST-KEY"]:
+        # Offline Master / Test key bypass (ideal for offline testing or sandbox)
+        if clean_key in ["MCO-TEST-2026", "MCO-TEST-KEY"]:
             now = datetime.now(timezone.utc)
             test_data = {
                 "valid": True,
@@ -1084,7 +1084,7 @@ class LicenseManager:
             return None
 
         clean_key = str(self._cached_license.get("serial_key", "")).strip().upper()
-        if clean_key in ["MCO-WIN7-TEST-2026", "MCO-TEST-2026", "WIN7-TEST-KEY"]:
+        if clean_key in ["MCO-TEST-2026", "MCO-TEST-KEY"]:
             return self._cached_license
 
         endpoints = [

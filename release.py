@@ -7,7 +7,7 @@ One-command pipeline to:
 3. Stage and commit all pending code changes
 4. Push commit to GitHub (main branch)
 5. Create and push release tag (vX.Y.Z)
-6. Automatically trigger GitHub Actions to build MCOMaker-Setup.exe & MCOMaker-Win7-Setup.exe
+6. Automatically trigger GitHub Actions to build MCOMaker-Setup.exe
 7. Broadcast update notification to live clients via Vercel microservice!
 
 Usage:
@@ -175,7 +175,7 @@ def main():
         print(f"  [WARN] Note: Vercel broadcast notification skipped: {e}")
 
     print(f"\n[5/5] Success! GitHub Actions CI/CD has been triggered.")
-    print("      Both Windows 10/11 and Windows 7 installers are building in parallel.")
+    print("      Windows 10/11 installer is building...")
     print(f"      Check progress at your GitHub Actions tab!")
     print("=" * 60)
 

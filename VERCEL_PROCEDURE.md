@@ -11,7 +11,7 @@ This guide walks you through deploying the **MCO Maker Licensing & Auto-Update S
   - `POST /api/license/activate` - Hardware lock & subscription activation
   - `POST /api/license/verify` - Background heartbeat verification
   - `POST /api/admin/generate` - Generate new serial keys (protected by `ADMIN_SECRET`)
-  - `GET /api/updates/latest` - Serve updates to Windows 10/11 and Windows 7 clients
+  - `GET /api/updates/latest` - Serve update metadata and direct CDN downloads to desktop clients
   - `POST /api/admin/broadcast-update` - Broadcast new releases from `release.py`
 
 ---

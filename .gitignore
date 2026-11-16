@@ -14,8 +14,7 @@ ENV/
 build/
 dist/
 release-assets/
-redist/*
-!redist/api-ms-win-core-path-l1-1-0.dll
+redist/
 *.egg-info/
 generate_key.exe
 *.exe

@@ -46,7 +46,7 @@ With **MCO Maker**:
   2. **For RO Office**: Generates Revenue Office CP-FORM-138 with Batch #, Sub Division, Account Number, Transaction Type (1- REPLACEMENT), Feeder Code, and audit signatures.
 - **Word Export**: Generates clean, formatted **Microsoft Word (.docx)** documents ready for printing.
 - **Hardware Binding & Licensing**: BIOS UUID & Windows MachineGuid hardware locking with instant startup (<50ms).
-- **Multi-OS Support**: Native builds for both **Windows 10/11 (64-bit)** and **Windows 7 / Legacy (32-bit with bundled VC++ runtime)**.
+- **Modern Windows Support**: Native 64-bit installer with optimized packaging and instant startup.
 
 ---
 
@@ -164,7 +164,7 @@ This automatically:
 1. Validates code syntax
 2. Bumps `APP_VERSION` in `main.py` and `installer.iss`
 3. Commits and pushes tag `v1.0.1` to GitHub
-4. Triggers GitHub Actions CI/CD to build both `MCOMaker-Setup.exe` (Win 10/11) and `MCOMaker-Win7-Setup.exe` (Win 7 x86) and publish GitHub Releases!
+4. Triggers GitHub Actions CI/CD to build `MCOMaker-Setup.exe` and publish GitHub Releases!
 
 ---
 
