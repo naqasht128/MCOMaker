@@ -453,7 +453,7 @@ def scrape_pesco_bill(account_no: str, base_url: str = "https://bill.pitc.com.pk
         if not ocr:
             raise RuntimeError("CAPTCHA detected on PITC bill portal, but ddddocr is not installed.")
 
-        max_captcha_attempts = 3
+        max_captcha_attempts = 5
         for attempt in range(max_captcha_attempts):
             img_src = captcha_img.get("src", "")
             img_url = urllib.parse.urljoin(base_url, img_src)
