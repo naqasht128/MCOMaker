@@ -34,6 +34,10 @@ import webbrowser
 from datetime import datetime, date, timezone, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+import types
+
+# Lightweight cv2 stub to prevent ddddocr 1.6.1 from importing 118MB OpenCV
+sys.modules.setdefault("cv2", types.ModuleType("cv2"))
 
 logger = logging.getLogger("MCOMaker")
 

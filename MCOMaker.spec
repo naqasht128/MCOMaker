@@ -2,6 +2,7 @@
 import os
 import glob
 import sys
+import importlib.util
 
 compiled_binaries = []
 for pyd_path in glob.glob('*.pyd'):
@@ -9,11 +10,16 @@ for pyd_path in glob.glob('*.pyd'):
 
 entry_script = 'launcher.py' if os.path.exists('launcher.py') else 'main.py'
 
-from PyInstaller.utils.hooks import collect_data_files
-
+# Only bundle the required OCR model (common.onnx) and charsets, omitting unused common_det.onnx (20MB) and common_old.onnx (13.6MB)
 ddddocr_datas = []
 try:
-    ddddocr_datas = collect_data_files('ddddocr')
+    dd_spec = importlib.util.find_spec('ddddocr')
+    if dd_spec and dd_spec.submodule_search_locations:
+        dd_path = list(dd_spec.submodule_search_locations)[0]
+        for fname in ['common.onnx', 'charsets.py', 'logo.png']:
+            fpath = os.path.join(dd_path, fname)
+            if os.path.exists(fpath):
+                ddddocr_datas.append((fpath, 'ddddocr'))
 except Exception:
     pass
 
@@ -37,8 +43,8 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
+    runtime_hooks=['rthook_cv2.py'],
+    excludes=['cv2', 'opencv'],
     noarchive=False,
     optimize=0,
 )
@@ -49,9 +55,8 @@ exe_icon = ['assets/mcomaker.ico'] if sys.platform == 'win32' else None
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='MCOMaker',
     debug=False,
     bootloader_ignore_signals=False,
@@ -66,4 +71,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=exe_icon,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='MCOMaker',
 )
