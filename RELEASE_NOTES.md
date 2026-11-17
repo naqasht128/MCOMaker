@@ -1,3 +1,3 @@
-# Release v1.0.8
+# Release v1.0.9
 
-Added Bill URL edit option and adjusted underline spacing
+Ultra-fast launch, reduced size, and automatic CAPTCHA solving
