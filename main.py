@@ -93,7 +93,7 @@ from docx.shared import Pt
 
 # Application Metadata
 APP_NAME = "MCO Maker"
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
 LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 DEFAULT_BILL_URL = os.environ.get("BILL_URL", "https://bill.pitc.com.pk/pescobill").strip().rstrip("/")
