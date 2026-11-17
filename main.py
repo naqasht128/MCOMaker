@@ -36,6 +36,16 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 import types
 
+# Reconfigure stdout/stderr to utf-8 on Windows to prevent charmap encoding errors
+if sys.platform == "win32":
+    try:
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Lightweight cv2 stub to prevent ddddocr 1.6.1 from importing 118MB OpenCV
 sys.modules.setdefault("cv2", types.ModuleType("cv2"))
 
@@ -82,9 +92,16 @@ def get_ocr():
     if _ocr_instance is None:
         try:
             import ddddocr
-            _ocr_instance = ddddocr.DdddOcr(show_ad=False)
+            try:
+                _ocr_instance = ddddocr.DdddOcr(show_ad=False)
+            except Exception:
+                # Fallback to beta model if common_old.onnx is missing or fails
+                _ocr_instance = ddddocr.DdddOcr(beta=True, show_ad=False)
         except Exception as exc:
-            logger.warning(f"Failed to initialize ddddocr: {exc}")
+            try:
+                logger.warning(f"Failed to initialize ddddocr: {exc}")
+            except Exception:
+                pass
             _ocr_instance = False
     return _ocr_instance if _ocr_instance else None
 import openpyxl
@@ -97,7 +114,7 @@ from docx.shared import Pt
 
 # Application Metadata
 APP_NAME = "MCO Maker"
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.10"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
 LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
 DEFAULT_BILL_URL = os.environ.get("BILL_URL", "https://bill.pitc.com.pk/pescobill").strip().rstrip("/")

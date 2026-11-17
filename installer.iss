@@ -2,7 +2,7 @@
 ; Produces a modern, professional, per-user Windows Setup Wizard
 
 #ifndef AppVersion
-#define AppVersion "1.0.9"
+#define AppVersion "1.0.10"
 #endif
 
 #ifndef OutputBaseFilename

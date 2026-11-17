@@ -1,3 +1,3 @@
-# Release v1.0.9
+# Release v1.0.10
 
-Ultra-fast launch, reduced size, and automatic CAPTCHA solving
+Trim 52MB beta OCR model to 13MB default model and fix charmap encoding
