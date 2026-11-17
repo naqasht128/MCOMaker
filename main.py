@@ -96,6 +96,7 @@ APP_NAME = "MCO Maker"
 APP_VERSION = "1.0.7"
 APP_SUBTITLE = "Smart Electricity Meter Change Order Generator"
 LICENSE_API_URL = os.environ.get("LICENSE_API_URL", "https://mcomaker.vercel.app").rstrip("/")
+DEFAULT_BILL_URL = os.environ.get("BILL_URL", "https://bill.pitc.com.pk/pescobill").strip().rstrip("/")
 
 # VS Code Dark+ Color Palette
 BG_DARK = "#1e1e1e"
@@ -257,6 +258,31 @@ def get_appdata_dir() -> Path:
     app_dir = base / "MCOMaker"
     app_dir.mkdir(parents=True, exist_ok=True)
     return app_dir
+
+
+def get_config_path() -> Path:
+    """Return local path to config.json in AppData."""
+    return get_appdata_dir() / "config.json"
+
+
+def load_app_config() -> dict:
+    """Load application configuration from AppData."""
+    p = get_config_path()
+    if p.is_file():
+        try:
+            return json.loads(p.read_text(encoding="utf-8-sig"))
+        except Exception as e:
+            logger.warning(f"Failed to read app config: {e}")
+    return {}
+
+
+def save_app_config(cfg: dict) -> None:
+    """Save application configuration to AppData."""
+    p = get_config_path()
+    try:
+        p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to save app config: {e}")
 
 
 def get_temp_cache_dir() -> Path:
@@ -424,10 +450,11 @@ def is_network_error(e: Exception) -> bool:
 
 def scrape_pesco_bill(
     account_no: str,
-    base_url: str = "https://bill.pitc.com.pk/pescobill",
+    base_url: str = DEFAULT_BILL_URL,
     status_callback: Callable[[str, str], None] | None = None
 ) -> dict:
     """Scrapes billing details for a reference number from PITC portal."""
+    base_url = (base_url or DEFAULT_BILL_URL).strip().rstrip("/")
     clean_ac = re.sub(r"\D", "", str(account_no))
     session = requests.Session()
     session.headers.update({
@@ -761,50 +788,50 @@ class MCODocumentGenerator:
                     p.runs[2].text = name
                     for ri in [3, 4, 6, 7]:
                         p.runs[ri].text = ""
-                    p.runs[5].text = "_" * max(5, 95 - 23 - len(name))
+                    p.runs[5].text = "_" * max(4, 82 - 23 - len(name))
                 elif len(p.runs) > 2:
                     p.runs[2].text = name
                     for ri in range(3, len(p.runs)):
                         p.runs[ri].text = ""
-                    p.runs[-1].text = "_" * max(5, 95 - 23 - len(name))
+                    p.runs[-1].text = "_" * max(4, 82 - 23 - len(name))
                 else:
-                    p.text = f"Consumer's Name: ______{name}" + ("_" * max(5, 95 - 23 - len(name)))
+                    p.text = f"Consumer's Name: ______{name}" + ("_" * max(4, 82 - 23 - len(name)))
             elif "Address:" in txt and "Consumer" not in txt:
                 addr = str(rec.get("address", ""))
                 if len(p.runs) >= 10:
                     p.runs[3].text = addr
                     for ri in [4, 5, 6, 8, 9]:
                         p.runs[ri].text = ""
-                    p.runs[7].text = "_" * max(5, 91 - 19 - len(addr))
+                    p.runs[7].text = "_" * max(4, 78 - 19 - len(addr))
                 elif len(p.runs) > 3:
                     p.runs[3].text = addr
                     for ri in range(4, len(p.runs)):
                         p.runs[ri].text = ""
-                    p.runs[-1].text = "_" * max(5, 91 - 19 - len(addr))
+                    p.runs[-1].text = "_" * max(4, 78 - 19 - len(addr))
                 else:
-                    p.text = f"Address: \t__________{addr}" + ("_" * max(5, 91 - 19 - len(addr)))
+                    p.text = f"Address: \t__________{addr}" + ("_" * max(4, 78 - 19 - len(addr)))
             elif "Feeder No:" in txt:
                 fdr = str(rec.get("feeder", ""))
                 if len(p.runs) >= 6:
                     p.runs[2].text = fdr
                     for ri in [4, 5]:
                         p.runs[ri].text = ""
-                    p.runs[3].text = "_" * max(5, 95 - 24 - len(fdr))
+                    p.runs[3].text = "_" * max(4, 82 - 24 - len(fdr))
                 elif len(p.runs) > 2:
                     p.runs[2].text = fdr
                     for ri in range(3, len(p.runs)):
                         p.runs[ri].text = ""
-                    p.runs[-1].text = "_" * max(5, 95 - 24 - len(fdr))
+                    p.runs[-1].text = "_" * max(4, 82 - 24 - len(fdr))
                 else:
-                    p.text = f"Feeder No: _____________{fdr}" + ("_" * max(5, 95 - 24 - len(fdr)))
+                    p.text = f"Feeder No: _____________{fdr}" + ("_" * max(4, 82 - 24 - len(fdr)))
             elif "Reason" in txt and "Change:" in txt:
                 sim_no = str(rec.get("sim_no", ""))
                 sim_id = str(rec.get("sim_id", ""))
                 telco = str(rec.get("telco", ""))
                 if len(p.runs) > 16:
                     p.runs[3].text = "Replacement"
-                    p.runs[4].text = "_" * 48
-                    p.runs[5].text = "____"
+                    p.runs[4].text = "_" * 40
+                    p.runs[5].text = ""
                     p.runs[6].text = "\n"
                     p.runs[7].text = ""
                     p.runs[8].text = ""
@@ -812,7 +839,7 @@ class MCODocumentGenerator:
                     p.runs[12].text = sim_id
                     p.runs[16].text = telco
                 else:
-                    p.text = f"Reason For Change: ____________Replacement____________________________________________________\nSim No: {sim_no}   Sim ID: {sim_id}   Telco: {telco}"
+                    p.text = f"Reason For Change: ____________Replacement{'_' * 40}\nSim No: {sim_no}   Sim ID: {sim_id}   Telco: {telco}"
             elif "Sim No:" in txt and "Reason" not in txt:
                 sim_no = str(rec.get("sim_no", ""))
                 sim_id = str(rec.get("sim_id", ""))
@@ -1470,6 +1497,95 @@ class UpdateDownloaderDialog(tk.Toplevel):
 
 
 # ====================================================================
+# EDIT BILL URL DIALOG
+# ====================================================================
+class EditBillUrlDialog(tk.Toplevel):
+    """Simple dialog to edit the bill portal URL."""
+
+    def __init__(self, parent: "MCOMakerApp", current_url: str, on_save: Callable[[str], None]):
+        super().__init__(parent)
+        self.parent_app = parent
+        self.on_save = on_save
+        self.title("Edit Bill URL")
+        self.geometry("480x165")
+        self.resizable(False, False)
+        self.configure(bg=CARD_BG)
+        self.transient(parent)
+        self.grab_set()
+
+        self.update_idletasks()
+        remove_title_bar_icon(self)
+        set_dark_title_bar(self)
+        self.after(20, lambda: remove_title_bar_icon(self))
+        self.after(50, lambda: set_dark_title_bar(self))
+        self.after(150, lambda: (remove_title_bar_icon(self), set_dark_title_bar(self)))
+        self.bind("<Map>", lambda e: (remove_title_bar_icon(self), set_dark_title_bar(self)), add="+")
+
+        # Center on parent window
+        try:
+            px = parent.winfo_rootx()
+            py = parent.winfo_rooty()
+            pw = parent.winfo_width()
+            ph = parent.winfo_height()
+            x = px + (pw - 480) // 2
+            y = py + (ph - 165) // 2
+            self.geometry(f"+{max(0, x)}+{max(0, y)}")
+        except Exception:
+            pass
+
+        self.url_var = tk.StringVar(value=(current_url or DEFAULT_BILL_URL).strip().rstrip("/"))
+
+        tk.Label(
+            self, text="Bill Portal URL:",
+            font=(UI_FONT, 9, "bold"), fg=TEXT_WHITE, bg=CARD_BG
+        ).pack(anchor="w", padx=20, pady=(16, 6))
+
+        self.entry = tk.Entry(
+            self, textvariable=self.url_var, font=(MONO_FONT, 9),
+            bg=INPUT_BG, fg=TEXT_WHITE, insertbackground=TEXT_WHITE,
+            relief="flat", highlightthickness=1, highlightbackground=BORDER_COLOR
+        )
+        self.entry.pack(fill="x", padx=20, pady=(0, 16), ipady=4)
+        self.entry.focus_set()
+        self.entry.select_range(0, "end")
+
+        btn_row = tk.Frame(self, bg=CARD_BG)
+        btn_row.pack(fill="x", padx=20, pady=(0, 14))
+
+        tk.Button(
+            btn_row, text="Save", font=(UI_FONT, 9, "bold"),
+            fg=TEXT_WHITE, bg=ACCENT_GREEN, activebackground=ACCENT_GREEN_HOVER,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2",
+            padx=18, pady=4, command=self._save
+        ).pack(side="left")
+
+        tk.Button(
+            btn_row, text="Cancel", font=(UI_FONT, 9),
+            fg=TEXT_MAIN, bg=BTN_SEC_BG, activebackground=BTN_SEC_HOVER,
+            activeforeground=TEXT_WHITE, relief="flat", cursor="hand2",
+            padx=14, pady=4, command=self.destroy
+        ).pack(side="right")
+
+        self.bind("<Return>", lambda e: self._save())
+        self.bind("<Escape>", lambda e: self.destroy())
+
+    def _save(self):
+        val = self.url_var.get().strip().rstrip("/")
+        if not val:
+            messagebox.showerror("Invalid URL", "Bill portal URL cannot be empty.", parent=self)
+            return
+        if not (val.startswith("http://") or val.startswith("https://")):
+            messagebox.showerror("Invalid URL", "URL must start with http:// or https://", parent=self)
+            return
+        self.on_save(val)
+        self.destroy()
+
+
+# Compatibility alias
+BillUrlDialog = EditBillUrlDialog
+
+
+# ====================================================================
 # MAIN DESKTOP APPLICATION GUI
 # ====================================================================
 class MCOMakerApp(tk.Tk):
@@ -1502,6 +1618,8 @@ class MCOMakerApp(tk.Tk):
         self.bind("<Map>", _on_mapped, add="+")
 
         self.license_mgr = LicenseManager()
+        self.app_config = load_app_config()
+        self.bill_url = str(self.app_config.get("bill_url") or DEFAULT_BILL_URL).strip().rstrip("/")
         self.records: list[dict] = []
         self.col_map: dict = {}
         self.is_scraping = False
@@ -1517,6 +1635,8 @@ class MCOMakerApp(tk.Tk):
             style.theme_use('clam')
         except Exception:
             pass
+
+
 
         # Progress bar: Green during scraping, White when completed
         style.configure(
@@ -1608,6 +1728,29 @@ class MCOMakerApp(tk.Tk):
     def _start_update_download(self, version: str, url: str):
         UpdateDownloaderDialog(self, version, url)
 
+    def _open_edit_bill_url_dialog(self):
+        """Open simple dialog to edit the bill portal URL."""
+        if self.is_scraping:
+            messagebox.showwarning(
+                "Scraping in Progress",
+                "Scraping is currently active. Please pause or stop scraping before changing the bill portal URL."
+            )
+            return
+        EditBillUrlDialog(self, self.bill_url, on_save=self._on_bill_url_changed)
+
+    # Alias for backward compatibility
+    _open_bill_url_dialog = _open_edit_bill_url_dialog
+
+    def _on_bill_url_changed(self, new_url: str):
+        """Callback invoked when user saves a new bill portal URL."""
+        new_url = (new_url or DEFAULT_BILL_URL).strip().rstrip("/")
+        if new_url == self.bill_url:
+            return
+        self.bill_url = new_url
+        self.app_config["bill_url"] = new_url
+        save_app_config(self.app_config)
+        self._log(f'Bill portal URL set to: {new_url}', tag="blue")
+
     def _build_ui(self):
         # Header Bar
         header = tk.Frame(self, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_COLOR)
@@ -1635,6 +1778,12 @@ class MCOMakerApp(tk.Tk):
             activebackground=BTN_SEC_HOVER, activeforeground=TEXT_WHITE, relief="flat",
             padx=12, pady=3, cursor="hand2", command=self._show_about
         ).pack(side="right")
+
+        tk.Button(
+            btn_box, text="Edit Bill URL", font=(UI_FONT, 9), fg=TEXT_MAIN, bg=BTN_SEC_BG,
+            activebackground=BTN_SEC_HOVER, activeforeground=TEXT_WHITE, relief="flat",
+            padx=12, pady=3, cursor="hand2", command=self._open_edit_bill_url_dialog
+        ).pack(side="right", padx=(0, 6))
 
         # ====================================================================
         # CARD 1: EXCEL INPUT FILE
@@ -2085,7 +2234,7 @@ class MCOMakerApp(tk.Tk):
 
                 try:
                     self.after(0, lambda p=prefix: self._log_transient(f"{p} --- Connecting & Solving CAPTCHA...", tag="blue"))
-                    bill_data = scrape_pesco_bill(ac_no, status_callback=on_status)
+                    bill_data = scrape_pesco_bill(ac_no, base_url=self.bill_url, status_callback=on_status)
                     rec.update(bill_data)
                     rec["_fetched"] = True
                     # Keep original excel overrides if present
@@ -2155,7 +2304,7 @@ class MCOMakerApp(tk.Tk):
                                 break
 
                             try:
-                                bill_data = scrape_pesco_bill(ac_no, status_callback=on_status)
+                                bill_data = scrape_pesco_bill(ac_no, base_url=self.bill_url, status_callback=on_status)
                                 rec.update(bill_data)
                                 rec["_fetched"] = True
                                 if rec.get("msn"): bill_data["msn"] = rec["msn"]

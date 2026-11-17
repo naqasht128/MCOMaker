@@ -44,6 +44,7 @@ With **MCO Maker**:
 - **Two Distinct MCO Formats**:
   1. **For Sub Division**: Generates Sub Division Meter Change Order with installed and removed meter grids, SDO signature lines, and SIM credentials.
   2. **For RO Office**: Generates Revenue Office CP-FORM-138 with Batch #, Sub Division, Account Number, Transaction Type (1- REPLACEMENT), Feeder Code, and audit signatures.
+- **Configurable Bill Portal URL**: Simple "Edit Bill URL" option in the header to change and persist the online billing portal URL for scraping.
 - **Word Export**: Generates clean, formatted **Microsoft Word (.docx)** documents ready for printing.
 - **Hardware Binding & Licensing**: BIOS UUID & Windows MachineGuid hardware locking with instant startup (<50ms).
 - **Modern Windows Support**: Native 64-bit installer with optimized packaging and instant startup.
